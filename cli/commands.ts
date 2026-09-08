@@ -5,11 +5,14 @@
 
 import { DEFAULT_BROKER_PORT, BROKER_HOSTNAME } from "../shared/constants.ts";
 import { BrokerClient } from "../shared/broker-client.ts";
+import { MODELS_HELP, modelsCommand } from "./models.ts";
 
 const BROKER_PORT = parseInt(process.env.MULTIAGENTS_PORT ?? String(DEFAULT_BROKER_PORT), 10);
 const BROKER_URL = `http://${BROKER_HOSTNAME}:${BROKER_PORT}`;
 
 const COMMAND_HELP: Record<string, string> = {
+  "models": MODELS_HELP,
+
   "setup": `multiagents setup
 
   Interactive setup wizard. Detects installed agent CLIs (Claude Code, Codex, Gemini),
@@ -117,6 +120,7 @@ Commands:
   setup                           Interactive setup wizard (run first!)
   dashboard [session-id]          TUI dashboard for monitoring
   session <subcommand>            Manage sessions (create/list/resume/pause/archive/delete/export)
+  models --file <path> [--json]    List provider models locally (no broker)
   send <target> <message>         Send message to an agent
   peers                           List connected agents
   status                          Broker health + peers summary
@@ -146,6 +150,11 @@ export async function runCli(args: string[]): Promise<void> {
   const command = args[0];
 
   switch (command) {
+    case "models": {
+      await modelsCommand(args.slice(1));
+      break;
+    }
+
     case "install-mcp": {
       const { installMcp } = await import("./install-mcp.ts");
       await installMcp();

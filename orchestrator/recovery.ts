@@ -173,6 +173,9 @@ export async function respawnAgent(
     .join("\n");
 
   // For Codex agents, use CodexDriver for respawn (same as initial launch).
+  if (slot.model_selection) {
+    return relaunchIntoSlot(sessionId, projectDir, slot, handoffTask, brokerClient);
+  }
   // Without this, respawned Codex agents run as single-shot `codex exec` and
   // lose the multi-turn driver, making them unable to receive messages.
   if (slot.agent_type === "codex") {
@@ -208,6 +211,7 @@ export async function respawnAgent(
     if (previousThreadId) {
       log(LOG_PREFIX, `Attempting to resume Codex thread ${previousThreadId} for slot ${slotId}`);
       try {
+        await driver.resumeThread(previousThreadId);
         const result = await driver.reply(previousThreadId, handoffTask);
         await brokerClient.updateSlot({
           id: slotId,

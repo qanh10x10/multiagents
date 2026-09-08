@@ -5,7 +5,7 @@
 import { DEFAULT_BROKER_PORT, BROKER_HOSTNAME, SESSION_DIR, SESSION_FILE } from "../shared/constants.ts";
 import { BrokerClient } from "../shared/broker-client.ts";
 import { getGitRoot, formatTime, timeSince, slugify } from "../shared/utils.ts";
-import type { SessionFile } from "../shared/types.ts";
+import type { SessionFile, Slot } from "../shared/types.ts";
 import * as readline from "node:readline";
 import * as path from "node:path";
 import * as fs from "node:fs";
@@ -133,6 +133,10 @@ async function resume(client: BrokerClient, sessionId?: string): Promise<void> {
     process.exit(1);
   }
 
+  const selectedSlots = (await client.listSlots(id)).filter(slot => slot.model_selection && slot.status === "disconnected" && slot.task_state !== "released");
+  if (selectedSlots.length) {
+    throw new Error(`Session "${id}" contains model-selected Codex workers. Use the orchestrator MCP resume_session tool with this session_id to preserve their provider/model and persistent message driver; terminal relaunch is not supported.`);
+  }
   await client.updateSession({ id, status: "active", pause_reason: null, paused_at: null });
   console.log(`Session "${id}" resumed.`);
 
@@ -153,10 +157,14 @@ async function resume(client: BrokerClient, sessionId?: string): Promise<void> {
   } catch { /* ok */ }
 }
 
-async function relaunchAgents(slots: Array<{ id: number; agent_type: string; display_name: string | null; role: string | null }>, sessionId: string): Promise<void> {
+async function relaunchAgents(slots: Slot[], sessionId: string): Promise<void> {
   const platform = process.platform;
 
   for (const slot of slots) {
+    if (slot.model_selection) {
+      console.error(`  Slot ${slot.id} requires orchestrator MCP resume_session to preserve its selected provider/model. No terminal launched.`);
+      continue;
+    }
     const cmd = slot.agent_type; // claude, codex, gemini
     const envVars = `MULTIAGENTS_SESSION=${sessionId} MULTIAGENTS_ROLE=${slot.role ?? ""} MULTIAGENTS_NAME=${slot.display_name ?? ""}`;
     try {

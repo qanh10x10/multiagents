@@ -85,6 +85,28 @@ Codex CLI uses the **app-server protocol** — a JSON-RPC stdio interface with t
 
 The orchestrator **drives Codex turns**: the forwarding loop polls the broker every 3s. If Codex has an active turn, messages are steered in instantly. If idle, a new turn is started via `driver.reply()`.
 
+### Provider Model Catalog
+
+Copy your VS Code `chatLanguageModels.json` catalog into the project's `.multiagents/chatLanguageModels.json`, or set `MULTIAGENTS_MODELS_FILE` to an external catalog path. Do not copy credentials into the project or commit secrets. Catalog lookup uses an explicit path first, then the environment variable, then the project default; relative paths resolve against the project directory (CLI: current directory).
+
+List a file locally without starting the broker, contacting providers, or requiring credentials:
+
+```bash
+bun cli.ts models --file .multiagents/chatLanguageModels.json
+bun cli.ts models --file .multiagents/chatLanguageModels.json --json
+bun cli.ts models --help
+```
+
+On this Windows setup, optional direct inspection uses `bun cli.ts models --file "C:\Users\PC\AppData\Roaming\Code\User\chatLanguageModels.json" --json`. This reads only the specified catalog, not VS Code settings or secret storage. The CLI requires `--file`; JSON contains allowlisted metadata and environment variable names, never credential values. Missing files, invalid catalogs, and invalid arguments fail with sanitized errors and a nonzero exit code.
+
+- **Credentials**: VS Code `${input:chat.lm.secret...}` references cannot be resolved outside VS Code. Provider names derive environment keys: `Hollow` uses `HOLLOW_API_KEY`, `ADNX` uses `ADNX_API_KEY`. Alternatively, set the catalog's `apiKey` to a reference such as `${env:PROVIDER_API_KEY}`. Literal API keys are rejected. Set credentials in the orchestrator's environment before launching or resuming workers.
+- **Compatibility**: Only `customendpoint` providers with `apiType: "responses"` are supported. Launch requires the selected model to declare `toolCalling: true` and its credential environment variable to be present. Listing does not require credentials or tool calling. Vision, token limits, and zero-data-retention fields are unverified catalog claims, not tested capabilities or privacy guarantees.
+- **MCP discovery**: Call orchestrator `list_models` with optional `catalog_path` and `project_dir`. Use the returned `provider` and `model` exactly in `create_team.agents[].model_selection` or `add_agent.model_selection`: `{ "provider": "Hollow", "model": "<catalog model ID>", "catalog_path": ".multiagents/chatLanguageModels.json" }`. `catalog_path` is optional; `agent_type` must be `"codex"`.
+- **Runtime**: Selected models always run through Codex app-server, regardless of model ID prefixes such as `ag/`; a prefix does not select Claude or Gemini. Configuration is per worker, without changing global Codex configuration. Provider/model selection and the absolute catalog path persist for recovery and MCP `resume_session`; the catalog and environment credential must remain available. Terminal `session resume` intentionally does not support selected models; use MCP `resume_session` instead.
+- **Selected-worker isolation**: Selected workers use an owner-only, durable `CODEX_HOME` under `~/.multiagents/codex-workers/<project-session-slot hash>` (`USERPROFILE` on Windows). They do not inherit your global Codex settings, login/auth files, keyring credentials, or project `.codex/config.toml` settings. Project configuration layers are marked untrusted in the private config; task files and instructions remain available. Plugins, plugin recommendations, remote plugin synchronization, host skill discovery, and analytics are disabled. Only basic OS environment variables, worker identity/broker variables, and the selected credential variable are forwarded. Other provider credentials, inherited Codex state overrides, and Node/Bun startup injection variables are not forwarded. Use a dedicated provider credential variable, not an OS/Codex/multiagents control variable. Default, unselected agents are unchanged.
+- **Private state lifecycle**: Generated config contains environment key names, never credential values. Thread history stays in the same private home across crashes and resumes; process exit does not delete it. Delete a worker home manually only after its session is no longer needed; deletion loses native thread history. Launch fails if private state would be inside the task repository or owner-only permissions cannot be established. Unix uses directory/file modes `0700`/`0600`; Windows restricts the worker directory ACL to the current user. Machine-managed Codex policies still apply.
+- **Offline native regression**: Set `MULTIAGENTS_TEST_CODEX_EXECUTABLE` to an installed native `codex`/`codex.exe`, then run `bun test tests/selected-codex-native.test.ts`. Without that explicit opt-in the test skips. It uses synthetic user/project settings outside the repository and only `initialize`/`config/read`, never threads, turns, or provider requests. Native effective routing and MCP isolation were verified with Codex CLI 0.153.4.
+
 ## Task State Machine
 
 Every agent slot has a `task_state` that governs the review/approval workflow:
@@ -133,6 +155,7 @@ Agents **cannot disconnect** until explicitly released. This ensures the review 
 
 | Tool | Description |
 |------|-------------|
+| `list_models` | List safe provider/model metadata from a local catalog (optional catalog_path, project_dir) |
 | `create_team` | Spawn a team with roles, file ownership, and a plan |
 | `get_team_status` | Live status of all agents with completion tracking |
 | `broadcast_to_team` | Message all agents at once |
@@ -278,6 +301,7 @@ multiagents/
 │   └── guide.ts            Built-in documentation
 └── cli/
     ├── commands.ts         CLI command router
+    ├── models.ts           Broker-free provider model listing
     ├── dashboard.ts        TUI dashboard (ANSI, no dependencies)
     ├── session.ts          Session management commands
     ├── setup.ts            Interactive setup wizard
@@ -302,6 +326,7 @@ multiagents/
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `MULTIAGENTS_PORT` | `7899` | Broker HTTP port |
+| `MULTIAGENTS_MODELS_FILE` | `.multiagents/chatLanguageModels.json` | External provider catalog path; explicit catalog paths take precedence |
 | `MULTIAGENTS_DB` | `~/.multiagents/peers.db` | SQLite database path |
 | `MULTIAGENTS_SESSION` | - | Session ID (set by orchestrator) |
 | `MULTIAGENTS_SLOT` | - | Slot ID (set by orchestrator) |

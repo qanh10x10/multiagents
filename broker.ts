@@ -11,7 +11,7 @@
  */
 
 import { Database } from "bun:sqlite";
-import { normalize } from "node:path";
+import { normalize, isAbsolute } from "node:path";
 import {
   DEFAULT_BROKER_PORT,
   DEFAULT_DB_PATH,
@@ -21,7 +21,7 @@ import {
   DEFAULT_GUARDRAILS,
   CLEANUP_INTERVAL,
 } from "./shared/constants.ts";
-import { generatePeerId } from "./shared/utils.ts";
+import { generatePeerId, safeJsonParse } from "./shared/utils.ts";
 import type {
   RegisterRequest,
   RegisterResponse,
@@ -128,6 +128,7 @@ const alterStatements = [
   "ALTER TABLE slots ADD COLUMN input_tokens INTEGER DEFAULT 0",
   "ALTER TABLE slots ADD COLUMN output_tokens INTEGER DEFAULT 0",
   "ALTER TABLE slots ADD COLUMN cache_read_tokens INTEGER DEFAULT 0",
+  "ALTER TABLE slots ADD COLUMN model_selection TEXT",
 ];
 
 for (const stmt of alterStatements) {
@@ -171,7 +172,8 @@ db.run(`
     last_peer_pid INTEGER,
     last_connected INTEGER,
     last_disconnected INTEGER,
-    context_snapshot TEXT
+    context_snapshot TEXT,
+    model_selection TEXT
   )
 `);
 
@@ -267,6 +269,16 @@ db.run(`
 
 // --- Context snapshot builder ---
 
+/** Activity snapshots may replace summaries, but must retain the resume handle. */
+function preserveThreadId(slotId: number, snapshot: string | null): string | null {
+  const row = db.query("SELECT context_snapshot FROM slots WHERE id = ?").get(slotId) as { context_snapshot: string | null } | null;
+  const previous = safeJsonParse<{ codex_thread_id?: string }>(row?.context_snapshot ?? null, {});
+  if (typeof previous?.codex_thread_id !== "string" || !previous.codex_thread_id) return snapshot;
+  const incoming = safeJsonParse<Record<string, unknown>>(snapshot, {});
+  const context = incoming && typeof incoming === "object" && !Array.isArray(incoming) ? incoming : {};
+  return JSON.stringify({ codex_thread_id: previous.codex_thread_id, ...context });
+}
+
 /** Build a rich context snapshot for a disconnecting peer/slot. */
 function buildContextSnapshot(peer: { summary?: string | null; cwd?: string | null }, slotId: number): string {
   const slotRow = db.query("SELECT task_state FROM slots WHERE id = ?").get(slotId) as { task_state: string } | null;
@@ -280,14 +292,14 @@ function buildContextSnapshot(peer: { summary?: string | null; cwd?: string | nu
     planItems = planRow;
   } catch { /* plan tables may not have data */ }
 
-  return JSON.stringify({
+  return preserveThreadId(slotId, JSON.stringify({
     last_summary: peer.summary ?? null,
     last_status: "disconnected",
     last_cwd: peer.cwd ?? null,
     task_state: slotRow?.task_state ?? null,
     plan_items: planItems.length > 0 ? planItems : null,
     disconnected_at: Date.now(),
-  });
+  }))!;
 }
 
 // --- Stale peer cleanup ---
@@ -436,7 +448,7 @@ function handleRegister(body: RegisterRequest): RegisterResponse {
         "SELECT * FROM messages WHERE session_id = ? AND to_slot_id = ? ORDER BY sent_at DESC LIMIT ?"
       ).all(effectiveSessionId, targetSlot.id, RECONNECT_RECAP_LIMIT) as Message[];
       recap.reverse();
-      const updatedSlot = db.query("SELECT * FROM slots WHERE id = ?").get(targetSlot.id) as Slot;
+      const updatedSlot = handleGetSlot({ id: targetSlot.id })!;
       return { id, slot: updatedSlot, recap };
     }
   }
@@ -472,7 +484,7 @@ function handleRegister(body: RegisterRequest): RegisterResponse {
       ).all(body.session_id, slot.id, RECONNECT_RECAP_LIMIT) as Message[];
       recap.reverse();
 
-      const updatedSlot = db.query("SELECT * FROM slots WHERE id = ?").get(slot.id) as Slot;
+      const updatedSlot = handleGetSlot({ id: slot.id })!;
       return { id, slot: updatedSlot, recap };
     }
     // 0 matches — fall through to create new slot if session exists
@@ -498,7 +510,7 @@ function handleRegister(body: RegisterRequest): RegisterResponse {
 
   if (slotId !== null) {
     db.run("UPDATE slots SET peer_id = ? WHERE id = ?", [id, slotId]);
-    slotResult = db.query("SELECT * FROM slots WHERE id = ?").get(slotId) as Slot;
+    slotResult = handleGetSlot({ id: slotId })!;
   }
 
   return slotResult ? { id, slot: slotResult } : { id };
@@ -837,23 +849,46 @@ function handleUpdateSession(body: UpdateSessionRequest): Session | null {
 
 // --- Slots ---
 
+function serializeModelSelection(value: unknown, agentType: string): string | null {
+  if (value === undefined || value === null) return null;
+  if (agentType !== "codex" || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("model_selection requires a Codex provider/model selection");
+  }
+  const selection = value as Record<string, unknown>;
+  if (Object.keys(selection).some(key => !["provider", "model", "catalog_path"].includes(key)) ||
+      typeof selection.provider !== "string" || !selection.provider.trim() ||
+      typeof selection.model !== "string" || !selection.model.trim() ||
+      typeof selection.catalog_path !== "string" || !isAbsolute(selection.catalog_path)) {
+    throw new Error("model_selection accepts only provider, model, and an absolute catalog_path");
+  }
+  return JSON.stringify({ provider: selection.provider, model: selection.model, catalog_path: selection.catalog_path });
+}
+
+function decodeSlot(row: unknown): Slot | null {
+  if (!row) return null;
+  const slot = row as Omit<Slot, "model_selection"> & { model_selection: string | null };
+  return { ...slot, model_selection: slot.model_selection ? JSON.parse(slot.model_selection) : null };
+}
+
 function handleCreateSlot(body: CreateSlotRequest): Slot {
+  const selection = serializeModelSelection(body.model_selection, body.agent_type);
   const res = db.run(
-    "INSERT INTO slots (session_id, agent_type, display_name, role, role_description) VALUES (?, ?, ?, ?, ?)",
-    [body.session_id, body.agent_type, body.display_name ?? null, body.role ?? null, body.role_description ?? null]
+    "INSERT INTO slots (session_id, agent_type, display_name, role, role_description, model_selection) VALUES (?, ?, ?, ?, ?, ?)",
+    [body.session_id, body.agent_type, body.display_name ?? null, body.role ?? null, body.role_description ?? null, selection]
   );
-  return db.query("SELECT * FROM slots WHERE id = ?").get(Number(res.lastInsertRowid)) as Slot;
+  return handleGetSlot({ id: Number(res.lastInsertRowid) })!;
 }
 
 function handleGetSlot(body: { id: number }): Slot | null {
-  return (db.query("SELECT * FROM slots WHERE id = ?").get(body.id) as Slot) ?? null;
+  return decodeSlot(db.query("SELECT * FROM slots WHERE id = ?").get(body.id));
 }
 
 function handleListSlots(body: { session_id: string }): Slot[] {
-  return db.query("SELECT * FROM slots WHERE session_id = ?").all(body.session_id) as Slot[];
+  return db.query("SELECT * FROM slots WHERE session_id = ?").all(body.session_id).map(row => decodeSlot(row)!);
 }
 
 function handleUpdateSlot(body: UpdateSlotRequest): Slot | null {
+  if ("model_selection" in body) throw new Error("model_selection is immutable; create a new slot to change models");
   const fields: string[] = [];
   const values: any[] = [];
 
@@ -873,7 +908,7 @@ function handleUpdateSlot(body: UpdateSlotRequest): Slot | null {
       fields.push("last_connected = ?"); values.push(Date.now());
     }
   }
-  if (body.context_snapshot !== undefined) { fields.push("context_snapshot = ?"); values.push(body.context_snapshot); }
+  if (body.context_snapshot !== undefined) { fields.push("context_snapshot = ?"); values.push(preserveThreadId(body.id, body.context_snapshot)); }
   if (body.display_name !== undefined) { fields.push("display_name = ?"); values.push(body.display_name); }
   if (body.role !== undefined) { fields.push("role = ?"); values.push(body.role); }
   if (body.role_description !== undefined) { fields.push("role_description = ?"); values.push(body.role_description); }
@@ -892,7 +927,7 @@ function handleUpdateSlot(body: UpdateSlotRequest): Slot | null {
       db.run("UPDATE peers SET slot_id = ?, session_id = ? WHERE id = ?", [body.id, slot.session_id, body.peer_id]);
     }
   }
-  return (db.query("SELECT * FROM slots WHERE id = ?").get(body.id) as Slot) ?? null;
+  return handleGetSlot({ id: body.id });
 }
 
 /** Delete a slot and its associated file locks, ownership, and orphaned peer. */

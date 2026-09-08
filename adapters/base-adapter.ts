@@ -424,8 +424,7 @@ export abstract class BaseAdapter {
     this.broker = new BrokerClient(this.brokerUrl);
     this.pollInterval = POLL_INTERVALS[agentType] ?? POLL_INTERVALS.custom;
 
-    // Read session file if present
-    this.readSessionFile();
+    this.resolveSession();
   }
 
   // --- Abstract methods (subclasses MUST implement) ---
@@ -470,11 +469,7 @@ export abstract class BaseAdapter {
     const driverMode = driverModeEnv || driverModeFile;
 
     // 1. Resolve session/slot info eagerly (before any async work)
-    const envSession = process.env.MULTIAGENTS_SESSION;
-    if (envSession && !this.sessionId) {
-      this.sessionId = envSession;
-      this.log(`Session from env MULTIAGENTS_SESSION: ${envSession}`);
-    }
+    this.resolveSession();
 
     // 2. Create MCP Server
     // Merge resources capability — base-adapter registers a ListResources
@@ -792,6 +787,15 @@ export abstract class BaseAdapter {
   }
 
   // --- Session file ---
+
+  protected resolveSession(): void {
+    this.sessionId = process.env.MULTIAGENTS_SESSION || null;
+    this.sessionFile = null;
+    // Explicit slots let the broker infer their session; never pair them with
+    // a shared workspace file that may belong to another team.
+    if (this.sessionId || process.env.MULTIAGENTS_SLOT) return;
+    this.readSessionFile();
+  }
 
   private readSessionFile(): void {
     try {

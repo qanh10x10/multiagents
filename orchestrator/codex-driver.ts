@@ -22,6 +22,15 @@
 
 import type { Subprocess } from "bun";
 import { log } from "../shared/utils.ts";
+import { codexCommand } from "../shared/codex-executable.ts";
+
+export interface CodexRuntimeConfig {
+  configArgs?: string[];
+  model?: string;
+  modelProvider?: string;
+  processCwd?: string;
+  threadCwd?: string;
+}
 
 /** Subprocess type with all stdio set to "pipe". */
 type PipedSubprocess = Subprocess<"pipe", "pipe", "pipe">;
@@ -129,11 +138,12 @@ export class CodexDriver {
   /** The currently in-flight turn ID, or null if no turn is active. */
   get activeTurnId(): string | null { return this._activeTurnId; }
 
-  private constructor(proc: PipedSubprocess) {
+  private constructor(proc: PipedSubprocess, private runtime: CodexRuntimeConfig = {}) {
     this.proc = proc;
     this.startReader();
     this.proc.exited.then((code) => {
       this._alive = false;
+      this.stopHeartbeat();
       this._activeTurnId = null;
       log(LOG_PREFIX, `codex app-server exited with code ${code}`);
       // Reject all pending requests
@@ -166,23 +176,30 @@ export class CodexDriver {
     cwd: string,
     env: Record<string, string | undefined>,
     timeoutMs = 30_000,
+    runtime: CodexRuntimeConfig = {},
   ): Promise<CodexDriver> {
-    const proc = Bun.spawn(["codex", "app-server"], {
-      cwd,
+    const proc = Bun.spawn([...codexCommand(env), "app-server", ...(runtime.configArgs ?? [])], {
+      cwd: runtime.processCwd ?? cwd,
       stdin: "pipe",
       stdout: "pipe",
       stderr: "pipe",
       env,
     });
 
-    const driver = new CodexDriver(proc);
+    const driver = new CodexDriver(proc, runtime);
     driver.readStderr();
 
     // App-server handshake: initialize → response → initialized notification
-    const initResult = await driver.sendRequest("initialize", {
+    let initResult: { userAgent?: string };
+    try {
+      initResult = await driver.sendRequest("initialize", {
       clientInfo: { name: "multiagents-orchestrator", version: "1.0" },
       capabilities: {},
     }, timeoutMs) as { userAgent?: string };
+    } catch (error) {
+      await driver.kill();
+      throw error;
+    }
 
     // Send initialized notification (required before any other requests)
     try {
@@ -207,7 +224,10 @@ export class CodexDriver {
 
     // Step 1: create a thread
     // thread/start returns { thread: { id: "..." }, ... }
-    const threadResult = await this.sendRequest("thread/start", {}, 30_000) as { thread: { id: string } };
+    const threadResult = await this.sendRequest("thread/start", {
+      ...(this.runtime.model ? { model: this.runtime.model, modelProvider: this.runtime.modelProvider } : {}),
+      ...(this.runtime.threadCwd ? { cwd: this.runtime.threadCwd } : {}),
+    }, 30_000) as { thread: { id: string } };
     const threadId = threadResult.thread?.id;
     if (!threadId) throw new Error("thread/start did not return a thread ID");
     this._threadId = threadId;
@@ -224,7 +244,7 @@ export class CodexDriver {
       turnInput.sandboxPolicy = sandboxPolicyObject(opts.sandbox, opts.cwd);
     }
     if (opts.developerInstructions) turnInput.developerInstructions = opts.developerInstructions;
-    if (opts.model) turnInput.model = opts.model;
+    if (this.runtime.model ?? opts.model) turnInput.model = this.runtime.model ?? opts.model;
     // Enable fully autonomous execution (equivalent to `codex exec -a never`).
     // Without this, MCP tool calls require interactive approval which hangs in headless mode.
     // The schema accepts: "untrusted" | "on-failure" | "on-request" | "never"
@@ -240,12 +260,14 @@ export class CodexDriver {
    * Send a new turn to an existing thread.
    */
   async reply(threadId: string, prompt: string): Promise<CodexTurnResult> {
+    this._threadId = threadId;
     log(LOG_PREFIX, `Reply to thread ${threadId}: ${prompt.slice(0, 100)}...`);
 
     const result = await this.startTurnAndWait(threadId, {
       threadId,
       input: [{ type: "text", text: prompt }],
       approvalPolicy: "never",
+      ...(this.runtime.model ? { model: this.runtime.model } : {}),
     });
 
     log(LOG_PREFIX, `Reply complete: content=${result.content.slice(0, 100)}...`);
@@ -275,6 +297,17 @@ export class CodexDriver {
       expectedTurnId: turnId,
       input: [{ type: "text", text }],
     }, 30_000);
+  }
+
+  /** Load persisted history into this app-server before sending another turn. */
+  async resumeThread(threadId: string): Promise<void> {
+    const result = await this.sendRequest("thread/resume", {
+      threadId,
+      ...(this.runtime.model ? { model: this.runtime.model, modelProvider: this.runtime.modelProvider } : {}),
+      ...(this.runtime.threadCwd ? { cwd: this.runtime.threadCwd } : {}),
+    }) as { thread: { id: string } };
+    if (!result.thread?.id) throw new Error("thread/resume did not return a thread ID");
+    this._threadId = result.thread.id;
   }
 
   /**
@@ -517,6 +550,12 @@ export class CodexDriver {
       if (resolver) {
         clearTimeout(resolver.timer);
         this._turnResolvers.delete(completedTurnId);
+
+        if (((params.turn as any)?.status ?? params.status) === "failed") {
+          // Provider errors can contain credentials. Never propagate their payload.
+          resolver.reject(new Error("Codex turn failed; check provider configuration and availability."));
+          return;
+        }
 
         // Extract usage from turn/completed params
         const usage = (params.usage ?? (params.turn as any)?.usage) as CodexTurnResult["usage"] | undefined;

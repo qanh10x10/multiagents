@@ -107,6 +107,7 @@ export interface Session {
 }
 
 export interface Slot {
+  model_selection?: import("./model-providers.ts").ModelSelection | null;
   id: number;
   session_id: string;
   agent_type: AgentType;
@@ -310,6 +311,7 @@ export interface UpdateSessionRequest {
 export interface CreateSlotRequest {
   session_id: string;
   agent_type: AgentType;
+  model_selection?: import("./model-providers.ts").ModelSelection;
   display_name?: string;
   role?: string;
   role_description?: string;
@@ -405,6 +407,7 @@ export interface SessionFile {
 
 export interface AgentLaunchConfig {
   agent_type: AgentType;
+  model_selection?: import("./model-providers.ts").ModelSelection;
   name: string;
   role: string;
   role_description: string;

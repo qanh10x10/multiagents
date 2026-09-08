@@ -26,7 +26,8 @@ import {
   FLAP_WINDOW_MS,
 } from "../shared/constants.ts";
 
-import { detectAgent, launchAgent, relaunchIntoSlot, announceNewMember, buildTeamContext, ENRICHED_PATH } from "./launcher.ts";
+import { detectAgent, launchAgent, relaunchIntoSlot, announceNewMember, buildTeamContext, ENRICHED_PATH, validateAgentModel } from "./launcher.ts";
+import { listModels, type ModelSelection } from "../shared/model-providers.ts";
 import { getGuide, formatTopicList, type GuideTopic } from "./guide.ts";
 import { monitorProcess, monitorCodexDriver, clearSlotTracking, clearAllTracking, type AgentEvent } from "./monitor.ts";
 import { getTeamStatus, formatTeamStatusForDisplay } from "./progress.ts";
@@ -35,7 +36,7 @@ import { handleAgentCrash, clearAllCrashHistory } from "./recovery.ts";
 import { controlSession, broadcastToTeam, resolveTarget } from "./session-control.ts";
 
 const LOG_PREFIX = "orchestrator";
-const BROKER_URL = `http://${BROKER_HOSTNAME}:${DEFAULT_BROKER_PORT}`;
+const BROKER_URL = `http://${BROKER_HOSTNAME}:${process.env.MULTIAGENTS_PORT ?? DEFAULT_BROKER_PORT}`;
 
 // Track active processes per session
 const activeProcesses: Map<string, Map<number, Subprocess>> = new Map();
@@ -52,6 +53,7 @@ interface CodexSlotState {
   lastNudge: number;
 }
 const activeCodexDrivers: Map<string, Map<number, CodexSlotState>> = new Map();
+const intentionallyStoppedSlots = new Set<number>();
 
 // --- Dashboard auto-launch ---
 
@@ -137,6 +139,7 @@ async function ensureBroker(brokerClient: BrokerClient): Promise<void> {
 // --- Event handler ---
 
 function handleEvent(event: AgentEvent): void {
+  if (intentionallyStoppedSlots.has(event.slotId)) return;
   log(LOG_PREFIX, `[${event.severity}] ${event.message}`);
 
   // Auto-respawn on crash (unless flapping)
@@ -146,11 +149,19 @@ function handleEvent(event: AgentEvent): void {
       const brokerClient = new BrokerClient(BROKER_URL);
       handleAgentCrash(event.slotId, event.data.exit_code as number, event.sessionId, brokerClient)
         .then(async (crashEvent) => {
+          if (intentionallyStoppedSlots.has(event.slotId) || !activeSessions.has(event.sessionId)) return;
           pendingEvents.push(crashEvent);
           if (!crashEvent.data?.is_flapping) {
             try {
               const { respawnAgent } = await import("./recovery.ts");
+              if (intentionallyStoppedSlots.has(event.slotId) || !activeSessions.has(event.sessionId)) return;
               const result = await respawnAgent(event.sessionId, event.slotId, brokerClient, sessionMeta.projectDir);
+              if (intentionallyStoppedSlots.has(event.slotId) || !activeSessions.has(event.sessionId)) {
+                if (result.codexDriver) await result.codexDriver.kill();
+                else result.process.kill();
+                await brokerClient.updateSlot({ id: event.slotId, status: "disconnected", peer_id: null });
+                return;
+              }
 
               // CRITICAL: Track the new process and CodexDriver
               const sessionProcs = activeProcesses.get(event.sessionId);
@@ -229,6 +240,7 @@ async function autoRestartIfIncomplete(
   brokerClient: BrokerClient,
 ): Promise<boolean> {
   try {
+    if (intentionallyStoppedSlots.has(slotId) || !activeSessions.has(sessionId)) return false;
     const taskInfo = await brokerClient.getTaskState(slotId);
     const state = taskInfo.task_state;
     const name = taskInfo.display_name ?? `Slot ${slotId}`;
@@ -264,7 +276,14 @@ async function autoRestartIfIncomplete(
       }
 
       const { respawnAgent } = await import("./recovery.ts");
+      if (intentionallyStoppedSlots.has(slotId) || !activeSessions.has(sessionId)) return false;
       const result = await respawnAgent(sessionId, slotId, brokerClient, sessionMeta.projectDir);
+      if (intentionallyStoppedSlots.has(slotId) || !activeSessions.has(sessionId)) {
+        if (result.codexDriver) await result.codexDriver.kill();
+        else result.process.kill();
+        await brokerClient.updateSlot({ id: slotId, status: "disconnected", peer_id: null });
+        return false;
+      }
 
       // CRITICAL: Track the new process and CodexDriver
       const sessionProcesses = activeProcesses.get(sessionId);
@@ -318,8 +337,29 @@ const server = new Server(
 );
 
 // Tool definitions
+const modelSelectionSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    provider: { type: "string", description: "Provider ID from list_models" },
+    model: { type: "string", description: "Model ID from list_models" },
+    catalog_path: { type: "string", description: "Optional VS Code model catalog path; resolved relative to project_dir and persisted absolutely" },
+  },
+  required: ["provider", "model"],
+};
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
+    {
+      name: "list_models",
+      description: "List selectable Codex providers/models from a VS Code catalog. Returns safe metadata only, never credential values.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          catalog_path: { type: "string" },
+          project_dir: { type: "string" },
+        },
+      },
+    },
     {
       name: "create_team",
       description: `Create a new multi-agent team session. Launches headless agents with assigned roles and file ownership. The project_dir will be created if it does not exist, and git will be initialized if needed.
@@ -346,6 +386,7 @@ Each agent receives role-specific best practices, tool discovery hints, and comp
               type: "object",
               properties: {
                 agent_type: { type: "string", enum: ["claude", "codex", "gemini"] },
+                model_selection: modelSelectionSchema,
                 name: { type: "string", description: "Display name for the agent, e.g., 'Alice' or 'Backend Engineer'" },
                 role: { type: "string", description: "Core role: 'Software Engineer', 'UI/UX Designer', 'QA Engineer', 'Code Reviewer'. Prefix with platform for specificity: 'Android Software Engineer', 'Web QA Engineer'." },
                 role_description: { type: "string", description: "Detailed role brief including platform (web/android/ios/cli/api), framework/stack, specific expertise, constraints, and acceptance criteria. The richer this is, the better the agent performs." },
@@ -416,6 +457,7 @@ Each agent receives role-specific best practices, tool discovery hints, and comp
         properties: {
           session_id: { type: "string" },
           agent_type: { type: "string", enum: ["claude", "codex", "gemini"] },
+          model_selection: modelSelectionSchema,
           name: { type: "string", description: "Display name for the agent" },
           role: { type: "string", description: "Core role: 'Software Engineer', 'UI/UX Designer', 'QA Engineer', 'Code Reviewer'. Prefix with platform for specificity." },
           role_description: { type: "string", description: "Detailed role brief including platform, framework, expertise, constraints. The richer this is, the better the agent performs." },
@@ -580,6 +622,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
   try {
     switch (name) {
+      case "list_models": {
+        const { catalog_path, project_dir } = args as { catalog_path?: string; project_dir?: string };
+        return { content: [{ type: "text", text: JSON.stringify(await listModels(catalog_path, project_dir), null, 2) }] };
+      }
       // ---- create_team ----
       case "create_team": {
         const { project_dir, session_name, agents, plan: planItems } = args as {
@@ -588,6 +634,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           agents: AgentLaunchConfig[];
           plan?: { label: string; agent_name?: string }[];
         };
+
+        // Validate every selection before CLI detection, project writes, or broker mutations.
+        for (const agentCfg of agents) {
+          const resolved = await validateAgentModel(agentCfg, project_dir);
+          if (resolved) agentCfg.model_selection = resolved.selection;
+        }
 
         // Detect available agents — check ALL before failing, report what IS available
         const unavailable: { name: string; type: string }[] = [];
@@ -869,7 +921,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       // ---- add_agent ----
       case "add_agent": {
-        const { session_id, agent_type, name: agentName, role, role_description, initial_task, file_ownership } = args as {
+        const { session_id, agent_type, name: agentName, role, role_description, initial_task, file_ownership, model_selection } = args as {
           session_id: string;
           agent_type: "claude" | "codex" | "gemini";
           name: string;
@@ -877,14 +929,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           role_description: string;
           initial_task: string;
           file_ownership?: string[];
+          model_selection?: ModelSelection;
         };
 
+        const session = await brokerClient.getSession(session_id);
+        const selected = await validateAgentModel({ agent_type, model_selection }, session.project_dir);
         const detection = await detectAgent(agent_type);
         if (!detection.available) {
           return { content: [{ type: "text", text: `Error: ${agent_type} CLI not found.` }] };
         }
 
-        const session = await brokerClient.getSession(session_id);
         const config: AgentLaunchConfig = {
           agent_type,
           name: agentName,
@@ -892,6 +946,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           role_description,
           initial_task,
           file_ownership,
+          ...(selected ? { model_selection: selected.selection } : {}),
         };
 
         const result = await launchAgent(session_id, session.project_dir, config, brokerClient);
@@ -912,6 +967,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           }
           sessionDrivers.set(result.slotId, { driver: result.codexDriver, threadId: result.codexDriver.threadId, busy: false, lastNudge: 0 });
           monitorCodexDriver(result.codexDriver, result.slotId, session_id, brokerClient, handleEvent);
+          result.codexDriver.onExit(() => {
+            handleEvent({ type: "agent_crashed", severity: "critical", slotId: result.slotId, sessionId: session_id,
+              message: `Codex driver for slot ${result.slotId} exited unexpectedly`, data: { exit_code: -1 } });
+          });
         } else {
           monitorProcess(result.process, result.slotId, session_id, brokerClient, handleEvent);
         }
@@ -935,18 +994,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           return { content: [{ type: "text", text: `Could not find agent matching "${target}".` }] };
         }
 
-        // Kill the process if we have it
+        // Gate recovery and detach tracking before kill can fire exit callbacks.
+        intentionallyStoppedSlots.add(slot.id);
+        const driverState = activeCodexDrivers.get(session_id)?.get(slot.id);
+        activeCodexDrivers.get(session_id)?.delete(slot.id);
         const sessionProcs = activeProcesses.get(session_id);
-        if (sessionProcs) {
-          const proc = sessionProcs.get(slot.id);
-          if (proc) {
-            proc.kill();
-            sessionProcs.delete(slot.id);
-          }
-        }
+        const proc = sessionProcs?.get(slot.id);
+        sessionProcs?.delete(slot.id);
+        clearSlotTracking(slot.id);
+        completionRestartHistory.delete(slot.id);
+        if (driverState) await driverState.driver.kill();
+        else proc?.kill();
 
         // Update slot to disconnected
-        await brokerClient.updateSlot({ id: slot.id, status: "disconnected" });
+        await brokerClient.updateSlot({ id: slot.id, status: "disconnected", peer_id: null });
 
         // Notify remaining team
         const slots = await brokerClient.listSlots(session_id);
@@ -1108,6 +1169,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           }
 
           if (shouldRemove) {
+            intentionallyStoppedSlots.add(slot.id);
+            const driver = activeCodexDrivers.get(session_id)?.get(slot.id)?.driver;
+            activeCodexDrivers.get(session_id)?.delete(slot.id);
+            if (driver) await driver.kill();
+            clearSlotTracking(slot.id);
             // Delete the slot from the broker DB
             await brokerClient.deleteSlot(slot.id);
             removedNames.push(slot.display_name || slot.role || `slot-${slot.id}`);
@@ -1141,6 +1207,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       // ---- end_session ----
       case "end_session": {
         const { session_id, create_pr } = args as { session_id: string; create_pr?: boolean };
+        activeSessions.delete(session_id);
 
         // Kill all active processes
         const sessionProcs = activeProcesses.get(session_id);
@@ -1209,6 +1276,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       // ---- delete_session ----
       case "delete_session": {
         const { session_id } = args as { session_id: string };
+        activeSessions.delete(session_id);
 
         // Kill any running agent processes first
         const sessionProcs = activeProcesses.get(session_id);
@@ -1304,14 +1372,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           return { content: [{ type: "text", text: `Session "${session_id}" not found.` }] };
         }
 
-        // Update session status to active
-        await brokerClient.updateSession({
-          id: session_id,
-          status: "active",
-          pause_reason: null,
-          paused_at: null,
-        });
-
         // Get all slots
         const slots = await brokerClient.listSlots(session_id);
         const disconnected = slots.filter((s: any) =>
@@ -1320,6 +1380,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           !skipSet.has((s.display_name ?? "").toLowerCase()) &&
           !skipSet.has((s.role ?? "").toLowerCase())
         );
+
+        for (const slot of disconnected) {
+          if (slot.model_selection) await validateAgentModel({ agent_type: slot.agent_type, model_selection: slot.model_selection }, session.project_dir);
+        }
+        await brokerClient.updateSession({ id: session_id, status: "active", pause_reason: null, paused_at: null });
+        activeSessions.set(session_id, { projectDir: session.project_dir });
 
         if (disconnected.length === 0) {
           // Track session even if no agents to respawn (for monitoring loops)
@@ -1412,6 +1478,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             resumeLaunchedTypes.add(slot.agent_type);
 
             // Relaunch into existing slot
+            intentionallyStoppedSlots.delete(slot.id);
             const result = await relaunchIntoSlot(session_id, session.project_dir, slot, handoffTask, brokerClient);
 
             // Track process
@@ -1419,8 +1486,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             sessionProcs.set(result.slotId, result.process);
             activeProcesses.set(session_id, sessionProcs);
 
-            // Monitor process
-            monitorProcess(result.process, result.slotId, session_id, brokerClient, handleEvent);
+            // Selected Codex workers must retain driver forwarding and crash recovery after resume.
+            if (result.codexDriver) {
+              let drivers = activeCodexDrivers.get(session_id);
+              if (!drivers) { drivers = new Map(); activeCodexDrivers.set(session_id, drivers); }
+              drivers.set(result.slotId, { driver: result.codexDriver, threadId: result.codexDriver.threadId, busy: false, lastNudge: 0 });
+              monitorCodexDriver(result.codexDriver, result.slotId, session_id, brokerClient, handleEvent);
+              result.codexDriver.onExit(() => {
+                handleEvent({ type: "agent_crashed", severity: "critical", slotId: result.slotId, sessionId: session_id,
+                  message: `Codex driver for slot ${result.slotId} exited after resume`, data: { exit_code: -1 } });
+              });
+            } else {
+              monitorProcess(result.process, result.slotId, session_id, brokerClient, handleEvent);
+            }
 
             // Release held messages for this slot
             try {
@@ -1504,6 +1582,8 @@ function startBackgroundLoops(brokerClient: BrokerClient): void {
         const slots = await brokerClient.listSlots(sessionId);
         for (const slot of slots) {
           if (slot.status !== "disconnected") continue;
+          // Keep durable model choices available for an explicit resume, even after failed recovery.
+          if (slot.model_selection) continue;
 
           // CRITICAL: Skip slots that have NEVER connected — they're still starting up.
           // Without this check, last_disconnected is null → defaults to 0 → deadFor = now
@@ -1916,6 +1996,8 @@ function startBackgroundLoops(brokerClient: BrokerClient): void {
       try {
         const slots = await brokerClient.listSlots(sessionId);
         for (const slot of slots) {
+          const stopped = () => intentionallyStoppedSlots.has(slot.id) || !activeSessions.has(sessionId);
+          if (stopped()) continue;
           const taskState = (slot as any).task_state;
           if (taskState === "released") continue;
 
@@ -1928,6 +2010,7 @@ function startBackgroundLoops(brokerClient: BrokerClient): void {
 
           // Peek at undelivered messages
           const peek = await brokerClient.peekUndelivered(slot.id);
+          if (stopped()) continue;
           if (!peek || peek.count === 0) continue;
 
           // Only act on actionable message types
@@ -1972,7 +2055,14 @@ function startBackgroundLoops(brokerClient: BrokerClient): void {
 
           try {
             const { respawnAgent } = await import("./recovery.ts");
+            if (stopped()) continue;
             const result = await respawnAgent(sessionId, slot.id, brokerClient, sessionMeta.projectDir);
+            if (stopped()) {
+              if (result.codexDriver) await result.codexDriver.kill();
+              else result.process.kill();
+              await brokerClient.updateSlot({ id: slot.id, status: "disconnected", peer_id: null });
+              continue;
+            }
 
             const sessionProcs = activeProcesses.get(sessionId);
             if (sessionProcs && result.process) {

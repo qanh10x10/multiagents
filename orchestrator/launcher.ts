@@ -13,6 +13,10 @@ import { log } from "../shared/utils.ts";
 import { DEFAULT_BROKER_PORT } from "../shared/constants.ts";
 import * as path from "node:path";
 import * as fs from "node:fs";
+import { homedir } from "node:os";
+import { codexCommand } from "../shared/codex-executable.ts";
+import { resolveModelSelection } from "../shared/model-providers.ts";
+import { selectedCodexRuntime, validateSelectedEnvironmentKey } from "./selected-codex-runtime.ts";
 
 const LOG_PREFIX = "launcher";
 
@@ -26,7 +30,7 @@ const CLI_PATH = path.resolve(import.meta.dir, "..", "cli.ts");
  * and spawned child processes can find claude, codex, gemini, bun, etc.
  */
 function enrichedPath(): string {
-  const home = process.env.HOME ?? "";
+  const home = homedir();
   const extra = [
     path.join(home, ".bun", "bin"),
     path.join(home, ".local", "bin"),
@@ -37,13 +41,14 @@ function enrichedPath(): string {
     path.join(home, ".cargo", "bin"),                                 // rustup
     path.join(home, ".volta", "bin"),                                 // volta
     path.join(home, "bin"),
+    ...(process.platform === "win32" ? [path.join(process.env.APPDATA ?? path.join(home, "AppData", "Roaming"), "npm")] : []),
   ];
   const current = process.env.PATH ?? "";
-  const dirs = new Set(current.split(":"));
+  const dirs = new Set(current.split(path.delimiter));
   for (const d of extra) {
     if (!dirs.has(d)) dirs.add(d);
   }
-  return [...dirs].join(":");
+  return [...dirs].join(path.delimiter);
 }
 
 /** Cached enriched PATH — computed once per process. */
@@ -102,17 +107,22 @@ export async function detectAgent(type: AgentType): Promise<AgentDetection> {
     return { available: false };
   }
 
-  const which = Bun.spawnSync(["which", cmd], { env: spawnEnv });
-  const binPath = new TextDecoder().decode(which.stdout).trim();
-
-  if (which.exitCode !== 0 || !binPath) {
+  let command: string[];
+  try {
+    const found = Bun.which(cmd, { PATH: ENRICHED_PATH });
+    command = type === "codex" ? codexCommand(spawnEnv) : found ? [found] : [];
+  } catch {
+    return { available: false };
+  }
+  const binPath = command[0];
+  if (!binPath) {
     return { available: false };
   }
 
   // Try to get version
   let version: string | undefined;
   try {
-    const proc = Bun.spawnSync([binPath, "--version"], { env: spawnEnv });
+    const proc = Bun.spawnSync([...command, "--version"], { env: spawnEnv, timeout: 10_000 });
     const out = new TextDecoder().decode(proc.stdout).trim();
     if (proc.exitCode === 0 && out) {
       version = out.split("\n")[0];
@@ -133,6 +143,30 @@ export function mcpServerCommand(agentType: AgentType): { command: string; args:
     command: "bun",
     args: [CLI_PATH, "mcp-server", "--agent-type", agentType],
   };
+}
+
+/** Resolve before creating files, slots, or subprocesses. No secrets enter persisted state. */
+export async function validateAgentModel(config: Pick<AgentLaunchConfig, "agent_type" | "model_selection">, projectDir: string) {
+  if (config.model_selection === undefined) return undefined;
+  if (config.agent_type !== "codex") throw new Error("model_selection is supported only for Codex workers");
+  if (!config.model_selection || typeof config.model_selection !== "object" ||
+      Object.keys(config.model_selection).some(key => !["provider", "model", "catalog_path"].includes(key))) {
+    throw new Error("model_selection accepts only provider, model, and catalog_path");
+  }
+  const resolved = await resolveModelSelection(config.model_selection, projectDir);
+  validateSelectedEnvironmentKey(resolved.envKey);
+  return resolved;
+}
+
+function selectedCodexPeerArgs(
+  env: Record<string, string | undefined>,
+): string[] {
+  const args = [...mcpServerCommand("codex").args];
+  for (const [flag, key] of [["session", "SESSION"], ["slot", "SLOT"], ["role", "ROLE"], ["name", "NAME"]]) {
+    const value = env[`MULTIAGENTS_${key}`];
+    if (value) args.push(`--${flag}`, value);
+  }
+  return args;
 }
 
 /**
@@ -276,26 +310,29 @@ export async function launchAgent(
   projectDir: string,
   config: AgentLaunchConfig,
   brokerClient: BrokerClient,
+  existingSlot?: Slot,
 ): Promise<LaunchResult> {
+  const resolved = await validateAgentModel(config, projectDir);
   // Ensure MCP configs and session file exist before spawning any agent
-  await ensureMcpConfigs(projectDir, sessionId);
+  if (!resolved) await ensureMcpConfigs(projectDir, sessionId);
 
   // Enrich role_description with auto-detected platform context
   const enrichedDescription = enrichRoleDescription(config, projectDir);
 
   // Create a slot in the broker for this agent
-  const slot = await brokerClient.createSlot({
+  const slot = existingSlot ?? await brokerClient.createSlot({
     session_id: sessionId,
     agent_type: config.agent_type,
     display_name: config.name,
     role: config.role,
     role_description: enrichedDescription,
+    ...(resolved ? { model_selection: resolved.selection } : {}),
   });
 
-  log(LOG_PREFIX, `Created slot ${slot.id} for ${config.name} (${config.agent_type})`);
+  log(LOG_PREFIX, `${existingSlot ? "Reusing" : "Created"} slot ${slot.id} for ${config.name} (${config.agent_type})`);
 
   // Assign file ownership if specified
-  if (config.file_ownership && config.file_ownership.length > 0) {
+  if (!existingSlot && config.file_ownership && config.file_ownership.length > 0) {
     await brokerClient.assignOwnership({
       session_id: sessionId,
       slot_id: slot.id,
@@ -378,7 +415,7 @@ export async function launchAgent(
   // The adapter reads this as a fallback when env vars are absent.
   const sessionDir = path.join(projectDir, ".multiagents");
   const sessionFilePath = path.join(sessionDir, "session.json");
-  try {
+  if (!resolved) try {
     let sessionFile: Record<string, unknown> = {};
     try { sessionFile = JSON.parse(fs.readFileSync(sessionFilePath, "utf-8")); } catch { /* ok */ }
     sessionFile.last_slot_id = slot.id;
@@ -398,7 +435,7 @@ export async function launchAgent(
     // is the only reliable mechanism for the MCP adapter to discover
     // its slot/session assignment.
     const driverModeFile = path.join(projectDir, ".multiagents", ".driver-mode");
-    try {
+    if (!resolved) try {
       fs.writeFileSync(driverModeFile, JSON.stringify({
         slot_id: slot.id,
         session_id: sessionId,
@@ -408,14 +445,19 @@ export async function launchAgent(
     } catch { /* best effort */ }
     spawnEnv.MULTIAGENTS_DRIVER_MODE = "1"; // Also set env var as secondary signal
 
-    const driver = await CodexDriver.spawn(projectDir, spawnEnv);
+    const selected = resolved
+      ? selectedCodexRuntime(resolved, spawnEnv, projectDir, selectedCodexPeerArgs(spawnEnv))
+      : undefined;
+    const driver = await CodexDriver.spawn(projectDir, selected?.env ?? spawnEnv, 30_000, selected?.runtime);
     log(LOG_PREFIX, `CodexDriver spawned for ${config.name} in slot ${slot.id}`);
 
     // Mark slot as connected immediately (the driver is alive)
-    await brokerClient.updateSlot({
-      id: slot.id,
-      status: "connected",
-    });
+    try {
+      await brokerClient.updateSlot({ id: slot.id, status: "connected" });
+    } catch (error) {
+      await driver.kill();
+      throw error;
+    }
 
     // Build developer instructions — keep brief to minimize Codex context size.
     // Large developer instructions slow down Codex LLM generation significantly.
@@ -458,8 +500,17 @@ export async function launchAgent(
 
     const startPromise = (async () => {
       try {
+        let previousThread: string | undefined;
+        try { previousThread = JSON.parse(existingSlot?.context_snapshot ?? "{}").codex_thread_id; } catch { /* no usable snapshot */ }
+        if (previousThread) {
+          try {
+            await driver.resumeThread(previousThread);
+          } catch {
+            log(LOG_PREFIX, `Cannot resume previous thread for slot ${slot.id}; creating a new thread with the same model selection`);
+          }
+        }
         // Phase 1: fast bootstrap (~5-9s)
-        const bootstrap = await driver.startSession({
+        const bootstrap = driver.threadId ? { threadId: driver.threadId, content: "Resumed" } : await driver.startSession({
           prompt: bootstrapPrompt,
           cwd: projectDir,
           sandbox: "workspace-write",
@@ -492,7 +543,26 @@ export async function launchAgent(
           }),
         });
       } catch (err) {
-        log(LOG_PREFIX, `${config.name} startup failed: ${err}`);
+        log(LOG_PREFIX, `${config.name} startup failed${resolved ? "" : `: ${err}`}`);
+        if (!driver.alive) return;
+        try {
+          await brokerClient.updateSlot({
+            id: slot.id,
+            status: "disconnected",
+            peer_id: null,
+            context_snapshot: JSON.stringify({
+              ...(driver.threadId ? { codex_thread_id: driver.threadId } : {}),
+              last_summary: "Codex startup failed; check provider configuration and availability.",
+              last_status: "error",
+              updated_at: Date.now(),
+            }),
+          });
+        } catch {
+          log(LOG_PREFIX, `Could not record startup failure for slot ${slot.id}`);
+        } finally {
+          // Exit callbacks route this failure through existing bounded recovery.
+          await driver.kill();
+        }
       }
     })();
 
@@ -556,6 +626,16 @@ export async function relaunchIntoSlot(
   handoffTask: string,
   brokerClient: BrokerClient,
 ): Promise<LaunchResult> {
+  if (slot.model_selection) {
+    return launchAgent(sessionId, projectDir, {
+      agent_type: slot.agent_type,
+      model_selection: slot.model_selection,
+      name: slot.display_name ?? `Agent #${slot.id}`,
+      role: slot.role ?? "general",
+      role_description: slot.role_description ?? "",
+      initial_task: handoffTask,
+    }, brokerClient, slot);
+  }
   await ensureMcpConfigs(projectDir, sessionId);
 
   // Enrich role_description with platform detection
