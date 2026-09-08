@@ -139,3 +139,7 @@ bun --hot ./index.ts
 ```
 
 For more information, read the Bun API docs in `node_modules/bun-types/docs/**.mdx`.
+
+## Shared Workflow
+
+Read [AGENTS.md](AGENTS.md) for shared repository rules and [docs/ecc-workflow.md](docs/ecc-workflow.md) for the optional, manually adapted ECC workflow. Runtime prompt injection requires `MULTIAGENTS_ECC=1` in the launching process; this is not a native ECC plugin or hook installation.

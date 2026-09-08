@@ -19,8 +19,8 @@ export class CodexAdapter extends BaseAdapter {
   private inboxPath: string | null = null;
   private hasRunStartup = false;
 
-  constructor() {
-    super("codex");
+  constructor(options: { ecc?: boolean } = {}) {
+    super("codex", options);
   }
 
   getCapabilities(): Record<string, unknown> {

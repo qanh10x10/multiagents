@@ -10,6 +10,7 @@
 //   multiagents web [session-id]
 // ============================================================================
 
+import { fileURLToPath } from "node:url";
 import { BrokerClient } from "../shared/broker-client.ts";
 import {
   DEFAULT_BROKER_PORT,
@@ -215,8 +216,7 @@ let sessionId = await resolveSessionId(sessionArg);
 
 // --- HTML serving ---
 
-const DASHBOARD_DIR = new URL(".", import.meta.url).pathname;
-const indexHtml = Bun.file(`${DASHBOARD_DIR}index.html`);
+const indexHtml = Bun.file(fileURLToPath(new URL("./index.html", import.meta.url)));
 
 const server = Bun.serve({
   port: WEB_DASHBOARD_PORT,

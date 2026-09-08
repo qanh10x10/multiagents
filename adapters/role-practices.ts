@@ -292,11 +292,35 @@ const PLATFORM_ROLES: RolePractice[] = [
 // Matching & Export
 // ---------------------------------------------------------------------------
 
+export interface RolePracticeOptions {
+  ecc?: boolean;
+}
+
+function workflowPractice(practice: RolePractice, options: RolePracticeOptions): RolePractice {
+  if (!options.ecc) return practice;
+  if (practice.category === "engineer") {
+    return {
+      ...practice,
+      practices: practice.practices
+        .replace(/^- TDD approach:.*$/m, "- Add focused regression tests where needed. Use TDD only when the user explicitly requests it.")
+        .replace(/^- Atomic commits:.*$/m, "- Never auto commit, amend, or push; require explicit user authorization for each action."),
+      toolHints: practice.toolHints.replace(/^- Use git for atomic commits\..*$/m, "- Check git status and git diff before signal_done. Do not commit without explicit user authorization."),
+    };
+  }
+  if (practice.category === "backend") {
+    return { ...practice, toolHints: "Use curl/httpie to test authorized endpoints. Run migrations only against isolated test data; live migrations require explicit user authorization. Check server logs for unhandled exceptions." };
+  }
+  if (practice.category === "devops") {
+    return { ...practice, completionCriteria: "Verify pipelines and deployment configuration within authorized scope; actual deployment requires explicit user authorization. Report unverified health checks and monitoring as limitations." };
+  }
+  return practice;
+}
+
 /**
  * Match role + description against practices and return combined text.
  * Backward-compatible with the old flat format.
  */
-export function getRolePractices(role?: string | null, roleDescription?: string | null): string | null {
+export function getRolePractices(role?: string | null, roleDescription?: string | null, options: RolePracticeOptions = {}): string | null {
   if (!role && !roleDescription) return null;
 
   const haystack = `${role ?? ""} ${roleDescription ?? ""}`.toLowerCase();
@@ -305,14 +329,14 @@ export function getRolePractices(role?: string | null, roleDescription?: string 
   // Check core roles first (more specific keywords)
   for (const practice of CORE_ROLES) {
     if (practice.keywords.some(kw => haystack.includes(kw))) {
-      matched.push(practice.practices);
+      matched.push(workflowPractice(practice, options).practices);
     }
   }
 
   // Then check platform roles (supplement core roles)
   for (const practice of PLATFORM_ROLES) {
     if (practice.keywords.some(kw => haystack.includes(kw))) {
-      matched.push(practice.practices);
+      matched.push(workflowPractice(practice, options).practices);
     }
   }
 
@@ -333,6 +357,7 @@ export interface StructuredPractices {
 export function getStructuredRolePractices(
   role?: string | null,
   roleDescription?: string | null,
+  options: RolePracticeOptions = {},
 ): StructuredPractices | null {
   if (!role && !roleDescription) return null;
 
@@ -342,7 +367,8 @@ export function getStructuredRolePractices(
   const completionParts: string[] = [];
 
   // Check core roles first
-  for (const practice of CORE_ROLES) {
+  for (const original of CORE_ROLES) {
+    const practice = workflowPractice(original, options);
     if (practice.keywords.some(kw => haystack.includes(kw))) {
       practicesParts.push(practice.practices);
       toolHintsParts.push(practice.toolHints);
@@ -351,7 +377,8 @@ export function getStructuredRolePractices(
   }
 
   // Then platform roles
-  for (const practice of PLATFORM_ROLES) {
+  for (const original of PLATFORM_ROLES) {
+    const practice = workflowPractice(original, options);
     if (practice.keywords.some(kw => haystack.includes(kw))) {
       practicesParts.push(practice.practices);
       if (practice.toolHints) toolHintsParts.push(practice.toolHints);

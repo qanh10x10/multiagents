@@ -3,6 +3,7 @@
 // multiagents — CLI Command Router
 // ============================================================================
 
+import { fileURLToPath } from "node:url";
 import { DEFAULT_BROKER_PORT, BROKER_HOSTNAME } from "../shared/constants.ts";
 import { BrokerClient } from "../shared/broker-client.ts";
 import { MODELS_HELP, modelsCommand } from "./models.ts";
@@ -175,7 +176,7 @@ export async function runCli(args: string[]): Promise<void> {
 
     case "web": {
       // Launch web dashboard server (auto-opens browser)
-      const serverPath = new URL("../dashboard/server.ts", import.meta.url).pathname;
+      const serverPath = fileURLToPath(new URL("../dashboard/server.ts", import.meta.url));
       const proc = Bun.spawn(["bun", serverPath, ...(args[1] ? [args[1]] : [])], {
         cwd: process.cwd(),
         stdio: ["inherit", "inherit", "inherit"],

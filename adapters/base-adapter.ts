@@ -384,7 +384,8 @@ const TOOLS = [
 // Role-specific best practices injection (from role-practices.ts module)
 // ---------------------------------------------------------------------------
 
-import { getRolePractices, getStructuredRolePractices } from "./role-practices.ts";
+import { getStructuredRolePractices } from "./role-practices.ts";
+import { isEccEnabled, withEccWorkflow } from "../shared/ecc.ts";
 
 // ---------------------------------------------------------------------------
 // BaseAdapter
@@ -413,7 +414,7 @@ export abstract class BaseAdapter {
   private readonly brokerUrl: string;
   private readonly brokerScript: string;
 
-  constructor(agentType: AgentType) {
+  constructor(agentType: AgentType, private readonly promptOptions: { ecc?: boolean } = {}) {
     this.agentType = agentType;
     this.brokerPort = parseInt(
       process.env.MULTIAGENTS_PORT ?? String(DEFAULT_BROKER_PORT),
@@ -835,7 +836,7 @@ export abstract class BaseAdapter {
     }
 
     // Inject structured role-specific practices, tool hints, and completion criteria
-    const structured = getStructuredRolePractices(slot.role, slot.role_description);
+    const structured = getStructuredRolePractices(slot.role, slot.role_description, { ecc: this.promptOptions.ecc ?? isEccEnabled() });
     if (structured) {
       parts.push("");
       parts.push("--- ROLE-SPECIFIC PRACTICES ---");
@@ -1611,7 +1612,8 @@ export abstract class BaseAdapter {
   // --- Lifecycle prompt ---
 
   protected getLifecyclePromptSection(): string {
-    return `
+    const ecc = this.promptOptions.ecc ?? isEccEnabled();
+    return withEccWorkflow(`
 
 === AGENT OPERATING SYSTEM ===
 
@@ -1715,7 +1717,7 @@ When bugs are reported to you:
 Software Engineers:
   1. Receive specs/task → read carefully → identify ALL unknowns
   2. Ask Designer/spec-writer via send_message → wait for answer → verify clarity → repeat until ZERO unknowns
-  3. Implement with TDD: write failing test → implement → verify → refactor
+  3. ${ecc ? "Implement with focused regression tests; use TDD only when the user explicitly requests it." : "Implement with TDD: write failing test → implement → verify → refactor"}
   4. Run linters, type checkers, full test suite. Fix ALL issues.
   5. signal_done with proof: test output, build log, manual verification results
   6. Receive Code Reviewer feedback → fix ALL [BLOCKING] items → signal_done again
@@ -1822,7 +1824,7 @@ DURING WORK:
 - Keep entries concise (1-3 sentences). Your teammates will read every entry.
 
 IMPORTANT: Query knowledge BEFORE making decisions. A teammate may have already decided on an approach. Contradicting existing decisions without discussion wastes everyone's time.
-`;
+`, ecc);
   }
 
   // --- Helpers ---

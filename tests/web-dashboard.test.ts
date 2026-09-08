@@ -6,7 +6,11 @@
  * Requires a real broker on a test port (same pattern as session-lifecycle.test.ts).
  */
 
-import { test, expect, beforeAll, afterAll, describe } from "bun:test";
+import { test, expect, beforeAll, afterAll, describe, spyOn } from "bun:test";
+import { cpSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const BROKER_PORT = 17899;
 const DASHBOARD_PORT = 17900;
@@ -14,6 +18,7 @@ const BROKER_URL = `http://127.0.0.1:${BROKER_PORT}`;
 const DASHBOARD_URL = `http://127.0.0.1:${DASHBOARD_PORT}`;
 let brokerProc: import("bun").Subprocess | null = null;
 let dashboardProc: import("bun").Subprocess | null = null;
+let fixtureDir: string;
 let testCounter = 0;
 
 function uid(prefix = "test"): string {
@@ -30,10 +35,17 @@ async function brokerPost(path: string, body: any): Promise<any> {
 }
 
 beforeAll(async () => {
+  fixtureDir = mkdtempSync(join(tmpdir(), "multiagents web dashboard "));
+  const repoDir = fileURLToPath(new URL("../", import.meta.url));
+  for (const dir of ["dashboard", "shared", "cli"]) {
+    cpSync(join(repoDir, dir), join(fixtureDir, dir), { recursive: true });
+  }
+
   // Start broker on test port
-  const brokerPath = new URL("../broker.ts", import.meta.url).pathname;
-  const tmpDb = `/tmp/multiagents-web-dash-test-${Date.now()}.db`;
-  brokerProc = Bun.spawn(["bun", brokerPath], {
+  const brokerPath = fileURLToPath(new URL("../broker.ts", import.meta.url));
+  const tmpDb = join(fixtureDir, "broker.db");
+  brokerProc = Bun.spawn([process.execPath, brokerPath], {
+    cwd: fixtureDir,
     env: { ...process.env, MULTIAGENTS_PORT: String(BROKER_PORT), MULTIAGENTS_DB: tmpDb },
     stdout: "pipe",
     stderr: "pipe",
@@ -52,7 +64,7 @@ beforeAll(async () => {
   await brokerPost("/sessions/create", {
     id: "dash-test-session",
     name: "Dashboard Test",
-    project_dir: "/tmp/dash-test",
+    project_dir: fixtureDir,
   });
 
   await brokerPost("/slots/create", {
@@ -63,8 +75,9 @@ beforeAll(async () => {
   });
 
   // Start web dashboard
-  const dashPath = new URL("../dashboard/server.ts", import.meta.url).pathname;
-  dashboardProc = Bun.spawn(["bun", dashPath, "dash-test-session"], {
+  const dashPath = join(fixtureDir, "dashboard", "server.ts");
+  dashboardProc = Bun.spawn([process.execPath, dashPath, "dash-test-session"], {
+    cwd: fixtureDir,
     env: {
       ...process.env,
       MULTIAGENTS_PORT: String(BROKER_PORT),
@@ -84,11 +97,28 @@ beforeAll(async () => {
     } catch { /* not ready */ }
     await new Promise((r) => setTimeout(r, 200));
   }
-});
+}, 15000);
 
-afterAll(() => {
+afterAll(async () => {
   dashboardProc?.kill();
   brokerProc?.kill();
+  await Promise.all([dashboardProc?.exited, brokerProc?.exited]);
+  if (fixtureDir) rmSync(fixtureDir, { recursive: true, force: true });
+});
+
+test("CLI web resolves a native dashboard path from an installation with spaces", async () => {
+  const commandsPath = join(fixtureDir, "cli", "commands.ts");
+  const { runCli } = await import(pathToFileURL(commandsPath).href);
+  const spawn = spyOn(Bun, "spawn").mockReturnValue({ exited: Promise.resolve(0) } as any);
+  try {
+    await runCli(["web", "dash-test-session"]);
+    expect(spawn).toHaveBeenCalledWith(
+      ["bun", join(fixtureDir, "dashboard", "server.ts"), "dash-test-session"],
+      { cwd: process.cwd(), stdio: ["inherit", "inherit", "inherit"] },
+    );
+  } finally {
+    spawn.mockRestore();
+  }
 });
 
 describe("Web Dashboard — HTTP server", () => {

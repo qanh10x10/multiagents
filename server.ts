@@ -11,6 +11,7 @@
  */
 
 import type { AgentType } from "./shared/types.ts";
+import { peerEccOptions } from "./shared/ecc.ts";
 
 const typeFlag = process.argv.indexOf("--agent-type");
 const agentType: AgentType =
@@ -27,7 +28,7 @@ async function main() {
     }
     case "codex": {
       const { CodexAdapter } = await import("./adapters/codex-adapter.ts");
-      await new CodexAdapter().start();
+      await new CodexAdapter(peerEccOptions(process.argv.slice(2))).start();
       break;
     }
     case "gemini": {
