@@ -21,3 +21,7 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Local extension packages (rebuild from source)
+artifacts/
+*.vsix

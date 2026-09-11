@@ -6,6 +6,9 @@
 // ============================================================================
 
 import type { Subprocess } from "bun";
+import { createHash } from "node:crypto";
+import type { AgentUsageUpdate } from "../shared/agent-usage.ts";
+import { validateUsageUpdate } from "../shared/agent-usage.ts";
 import type { BrokerClient } from "../shared/broker-client.ts";
 import type { CodexDriver, CodexNotification } from "./codex-driver.ts";
 import { log } from "../shared/utils.ts";
@@ -431,9 +434,48 @@ export function monitorCodexDriver(
   brokerClient: BrokerClient,
   onEvent: (event: AgentEvent) => void,
 ): void {
+  let usageQueue = Promise.resolve();
   driver.onNotification((notification: CodexNotification) => {
-    handleCodexNotification(notification, slotId, sessionId, brokerClient, onEvent);
+    if (notification.method === "thread/tokenUsage/updated" || notification.method === "account/rateLimits/updated") {
+      // Serialize telemetry only, keeping item/activity processing off this queue.
+      usageQueue = usageQueue.then(async () => {
+        const update = codexUsageUpdate(notification);
+        if (update) await brokerClient.updateSlot({ id: slotId, agent_usage: update });
+      }).catch(() => { log(LOG_PREFIX, `Usage update unavailable for slot ${slotId}`); });
+      return;
+    }
+    void handleCodexNotification(notification, slotId, sessionId, brokerClient, onEvent);
   });
+}
+
+/** Codex 0.153.4 app-server schema: total is cumulative; cached input is a subset of input. */
+export function codexUsageUpdate(notification: CodexNotification): AgentUsageUpdate | null {
+  const { method, params } = notification;
+  const hash = (value: string) => createHash("sha256").update(value).digest("hex");
+  try {
+    if (method === "thread/tokenUsage/updated") {
+      const thread = params.threadId;
+      const usage = params.tokenUsage as { total?: Record<string, unknown> } | undefined;
+      if (typeof thread !== "string" || !thread || thread.length > 300 || !usage?.total) return null;
+      return validateUsageUpdate({ kind: "tokens", stream: hash(thread), totals: {
+        input: usage.total.inputTokens, cached: usage.total.cachedInputTokens, output: usage.total.outputTokens,
+      } });
+    }
+    if (method === "account/rateLimits/updated") {
+      const limits = params.rateLimits as Record<string, any> | undefined;
+      if (!limits) return null;
+      const update: Record<string, unknown> = { kind: "quota", bucket: hash(String(limits.limitId ?? "default")) };
+      for (const key of ["primary", "secondary"]) {
+        const window = limits[key];
+        if (window?.windowDurationMins != null) update[key] = {
+          usedPercent: window.usedPercent, windowMinutes: window.windowDurationMins,
+          resetsAt: window.resetsAt == null ? null : window.resetsAt * 1000,
+        };
+      }
+      return validateUsageUpdate(update);
+    }
+  } catch { /* Unsupported or malformed telemetry stays unknown. */ }
+  return null;
 }
 
 /** Process a single app-server notification and update slot state. */
@@ -461,16 +503,10 @@ async function handleCodexNotification(
   }
 
   if (method === "turn/completed") {
-    // Extract token usage from turn completion
+    // Completion usage is not added: thread/tokenUsage/updated is the canonical
+    // cumulative stream. Combining both would double count the same requests.
     const turn = params.turn as Record<string, unknown> | undefined;
     const usage = (params.usage ?? turn?.usage) as Record<string, number> | undefined;
-    if (usage) {
-      await updateTokenUsage(slotId, {
-        input: usage.input_tokens ?? 0,
-        output: usage.output_tokens ?? 0,
-        cacheRead: usage.cached_input_tokens ?? 0,
-      }, brokerClient);
-    }
 
     onEvent({
       type: "agent_output",

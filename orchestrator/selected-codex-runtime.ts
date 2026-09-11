@@ -53,6 +53,7 @@ export function selectedCodexRuntime(
     }
     env[resolved.envKey] = sourceEnv[resolved.envKey];
     env.CODEX_HOME = home;
+    const allowAll = sourceEnv.MULTIAGENTS_CODEX_ALLOW_ALL === "1";
     const config = [
       ...resolved.codexArgs.filter((_, index) => index % 2 === 1),
       'cli_auth_credentials_store="file"',
@@ -64,7 +65,8 @@ export function selectedCodexRuntime(
       'features.skip_host_skill_discovery=true',
       'analytics.enabled=false',
       'mcp_servers.multiagents-peer={ command = ' + JSON.stringify(process.execPath)
-        + ', args = ' + JSON.stringify(peerArgs) + ', env = { MULTIAGENTS_DRIVER_MODE = "1" } }',
+        + ', args = ' + JSON.stringify(peerArgs) + ', env = { MULTIAGENTS_DRIVER_MODE = "1" }'
+        + (allowAll ? ', default_tools_approval_mode = "approve"' : '') + ' }',
     ];
     // Untrusted project layers are ignored by native Codex. Cover ancestors too,
     // including a parent repository when the selected working directory is nested.
@@ -77,7 +79,7 @@ export function selectedCodexRuntime(
     catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
     writeFileSync(file, config.join("\n") + "\n", { mode: 0o600 });
     if (process.platform !== "win32") chmodSync(file, 0o600);
-    return { env, runtime: { model: resolved.modelId, modelProvider: "multiagents_custom", processCwd: home, threadCwd: project } };
+    return { env, runtime: { allowAll, model: resolved.modelId, modelProvider: "multiagents_custom", processCwd: home, threadCwd: project } };
   } catch {
     throw new Error("Cannot prepare private Codex worker configuration outside the project with owner-only access.");
   }

@@ -18,6 +18,7 @@ let processes: Array<import("bun").Subprocess>;
 const originalSpawn = Bun.spawn.bind(Bun);
 const originalWhich = Bun.which.bind(Bun);
 let oldKey: string | undefined;
+let oldAllowAll: string | undefined;
 let failThreadStart = false;
 let turnStatus = "completed";
 
@@ -37,6 +38,8 @@ beforeEach(async () => {
   process.env.HOME = process.env.USERPROFILE = join(fixtureRoot, "home");
   catalog = join(directory, "catalog.json");
   oldKey = process.env.RUNTIME_TEST_API_KEY;
+  oldAllowAll = process.env.MULTIAGENTS_CODEX_ALLOW_ALL;
+  delete process.env.MULTIAGENTS_CODEX_ALLOW_ALL;
   process.env.RUNTIME_TEST_API_KEY = "runtime-test-secret";
   await Bun.write(catalog, JSON.stringify([{
     vendor: "customendpoint", name: "Fixture", apiType: "responses", apiKey: "${env:RUNTIME_TEST_API_KEY}",
@@ -91,6 +94,8 @@ afterEach(async () => {
   for (const proc of processes ?? []) { proc.kill(); await proc.exited; }
   if (oldKey === undefined) delete process.env.RUNTIME_TEST_API_KEY;
   else process.env.RUNTIME_TEST_API_KEY = oldKey;
+  if (oldAllowAll === undefined) delete process.env.MULTIAGENTS_CODEX_ALLOW_ALL;
+  else process.env.MULTIAGENTS_CODEX_ALLOW_ALL = oldAllowAll;
   for (const [key, value] of Object.entries(previousHome)) {
     if (value === undefined) delete process.env[key]; else process.env[key] = value;
   }
@@ -119,6 +124,45 @@ function brokerFixture() {
 }
 
 describe("selected Codex worker real subprocess lifecycle", () => {
+  test.each([undefined, "0", "true", "1"])("allow-all requires exact opt-in %s and survives resume/reply", async value => {
+    if (value !== undefined) process.env.MULTIAGENTS_CODEX_ALLOW_ALL = value;
+    const enabled = value === "1";
+    const { slots, client } = brokerFixture();
+    const result = await launchAgent("approval-fixture", directory, {
+      agent_type: "codex", name: "Worker", role: "Engineer", role_description: "Test", initial_task: "Fixture only",
+      model_selection: { provider: "Fixture", model: "one", catalog_path: catalog },
+    }, client);
+    const driver = result.codexDriver!;
+    await until(() => messages(1).filter(message => message.method === "turn/start").length === 2 && !driver.activeTurnId);
+    await driver.reply(driver.threadId!, "Follow-up");
+    const config = readFileSync(join(launches[0]!.env.CODEX_HOME!, "config.toml"), "utf8");
+    expect(config.includes('default_tools_approval_mode = "approve"')).toBe(enabled);
+    expect(launches[0]!.env.MULTIAGENTS_CODEX_ALLOW_ALL).toBeUndefined();
+    const start = messages(1).find(message => message.method === "thread/start");
+    expect(start.params.sandbox).toBe(enabled ? "danger-full-access" : undefined);
+    for (const turn of messages(1).filter(message => message.method === "turn/start")) {
+      expect(turn.params.approvalPolicy).toBe("never");
+      if (enabled) expect(turn.params.sandboxPolicy).toEqual({ type: "dangerFullAccess" });
+      else expect(turn.params.sandboxPolicy?.type).not.toBe("dangerFullAccess");
+    }
+    await driver.kill();
+    const recovered = await relaunchIntoSlot("approval-fixture", directory, slots[0]!, "Resume", client);
+    await until(() => messages(2).some(message => message.method === "turn/start") && !recovered.codexDriver!.activeTurnId);
+    const resume = messages(2).find(message => message.method === "thread/resume");
+    expect(resume.params.sandbox).toBe(enabled ? "danger-full-access" : "workspace-write");
+    expect(messages(2).find(message => message.method === "turn/start").params.sandboxPolicy?.type).toBe(enabled ? "dangerFullAccess" : undefined);
+    await recovered.codexDriver!.kill();
+  }, 15000);
+
+  test("default driver accepts explicit host allow-all without changing other MCP servers", async () => {
+    const driver = await CodexDriver.spawn(directory, { ...process.env, MULTIAGENTS_CODEX_ALLOW_ALL: "1" });
+    try {
+      await driver.startSession({ prompt: "Fixture", cwd: directory, sandbox: "workspace-write" });
+      expect(launches[0]!.args.slice(2)).toEqual(["-c", 'mcp_servers.multiagents-peer.default_tools_approval_mode="approve"']);
+      expect(messages(1).find(message => message.method === "turn/start").params.sandboxPolicy).toEqual({ type: "dangerFullAccess" });
+    } finally { await driver.kill(); }
+  });
+
   test("failed turn after thread creation disconnects and kills without leaking provider error", async () => {
     turnStatus = "failed";
     const { slots, client } = brokerFixture();

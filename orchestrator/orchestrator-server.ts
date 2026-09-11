@@ -15,9 +15,14 @@ import {
 import type { Subprocess } from "bun";
 
 import * as fs from "node:fs";
+import { fileURLToPath } from "node:url";
+import { join } from "node:path";
+import { homedir } from "node:os";
+import { randomUUID } from "node:crypto";
 import { BrokerClient } from "../shared/broker-client.ts";
 import type { AgentLaunchConfig } from "../shared/types.ts";
 import { log, getGitRoot, slugify, formatDuration, safeJsonParse } from "../shared/utils.ts";
+import { getChatObservation } from "./chat-observation.ts";
 import {
   DEFAULT_BROKER_PORT,
   BROKER_HOSTNAME,
@@ -28,6 +33,8 @@ import {
 
 import { detectAgent, launchAgent, relaunchIntoSlot, announceNewMember, buildTeamContext, ENRICHED_PATH, validateAgentModel } from "./launcher.ts";
 import { listModels, type ModelSelection } from "../shared/model-providers.ts";
+import { ProviderSettingsManager } from "../shared/provider-settings.ts";
+import { makeTeamTemplateTools } from "./team-template-tools.ts";
 import { getGuide, formatTopicList, type GuideTopic } from "./guide.ts";
 import { monitorProcess, monitorCodexDriver, clearSlotTracking, clearAllTracking, type AgentEvent } from "./monitor.ts";
 import { getTeamStatus, formatTeamStatusForDisplay } from "./progress.ts";
@@ -54,10 +61,11 @@ interface CodexSlotState {
 }
 const activeCodexDrivers: Map<string, Map<number, CodexSlotState>> = new Map();
 const intentionallyStoppedSlots = new Set<number>();
+const sessionCompletionTimers = new Map<string, number>();
 
 // --- Dashboard auto-launch ---
 
-const CLI_PATH = new URL("../cli.ts", import.meta.url).pathname;
+const CLI_PATH = fileURLToPath(new URL("../cli.ts", import.meta.url));
 
 /**
  * Launch the TUI dashboard in a new terminal window.
@@ -91,15 +99,16 @@ function launchDashboard(sessionId: string, projectDir: string): void {
   }
 }
 
-const WEB_DASHBOARD_PATH = new URL("../dashboard/server.ts", import.meta.url).pathname;
+const WEB_DASHBOARD_PATH = fileURLToPath(new URL("../dashboard/server.ts", import.meta.url));
 
 /**
  * Launch the web dashboard as a background Bun process.
  * Auto-opens the browser on localhost:7900.
  */
 function launchWebDashboard(sessionId: string, projectDir: string): void {
+  if (process.env.MULTIAGENTS_STUDIO_OWNS_DASHBOARD === "1") return;
   try {
-    const proc = Bun.spawn(["bun", WEB_DASHBOARD_PATH, sessionId], {
+    const proc = Bun.spawn([process.execPath, WEB_DASHBOARD_PATH, sessionId], {
       cwd: projectDir,
       env: { ...process.env, PATH: ENRICHED_PATH },
       stdio: ["ignore", "ignore", "ignore"],
@@ -120,20 +129,32 @@ async function ensureBroker(brokerClient: BrokerClient): Promise<void> {
   }
 
   log(LOG_PREFIX, "Starting broker daemon...");
-  const brokerScript = new URL("../broker.ts", import.meta.url).pathname;
-  const proc = Bun.spawn(["bun", brokerScript], {
+  const brokerScript = fileURLToPath(new URL("../broker.ts", import.meta.url));
+  const proc = Bun.spawn([process.execPath, brokerScript], {
     stdio: ["ignore", "ignore", "inherit"],
   });
-  proc.unref();
-
-  for (let i = 0; i < 30; i++) {
-    await new Promise((r) => setTimeout(r, 200));
-    if (await brokerClient.isAlive()) {
-      log(LOG_PREFIX, "Broker started");
-      return;
+  log(LOG_PREFIX, `Broker daemon spawned (PID ${proc.pid})`);
+  const deadline = Date.now() + 6000;
+  try {
+    while (Date.now() < deadline) {
+      if (proc.exitCode !== null) throw new Error("Broker daemon exited before becoming ready");
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const alive = await Promise.race([
+        brokerClient.isAlive(),
+        new Promise<false>((resolve) => { timer = setTimeout(() => resolve(false), Math.max(1, deadline - Date.now())); }),
+      ]).finally(() => clearTimeout(timer));
+      if (alive) {
+        proc.unref();
+        log(LOG_PREFIX, "Broker started");
+        return;
+      }
+      await new Promise((r) => setTimeout(r, Math.min(200, Math.max(0, deadline - Date.now()))));
     }
+    throw new Error("Failed to start broker daemon after 6 seconds");
+  } catch (error) {
+    if (proc.exitCode === null) proc.kill();
+    throw error;
   }
-  throw new Error("Failed to start broker daemon after 6 seconds");
 }
 
 // --- Event handler ---
@@ -333,7 +354,10 @@ const activeSessions: Map<string, { projectDir: string }> = new Map();
 
 const server = new Server(
   { name: "multiagents-orch", version: "1.0.0" },
-  { capabilities: { tools: {} } },
+  {
+    capabilities: { tools: {} },
+    instructions: "Use list_models and get_guide before orchestration. Before create_team, confirm the target project directory, provider, model, and task scope with the user; worker execution may incur provider fees and is not free compute. Default to one worker unless more are requested. Use get_team_status and get_session_log on request; do not endlessly poll. Report actual tool errors and blockers clearly. Status and logs are operational evidence, not a hidden thought stream. Never request or expose API keys in chat or terminal; use host credential prompts or inherited environment variables.",
+  },
 );
 
 // Tool definitions
@@ -347,8 +371,38 @@ const modelSelectionSchema = {
   },
   required: ["provider", "model"],
 };
+const templateLibraryPath = join(homedir(), ".multiagents", "team-library.json");
+const templateProvidersPath = join(homedir(), ".multiagents", "provider-settings.json");
+const templateCatalogPath = join(homedir(), ".multiagents", "runtime-catalog.json");
+async function templateProviders(): Promise<ProviderSettingsManager> {
+  const providers = new ProviderSettingsManager();
+  const result = await providers.loadFromFile(templateProvidersPath);
+  if (result.errors.length) throw new Error("Configure local providers in Studio before using this template.");
+  return providers;
+}
+const templateTools = makeTeamTemplateTools({
+  libraryPath: templateLibraryPath,
+  resolveModel: async (reference: { providerId: string; modelId: string }, runtime: string) => {
+    if (runtime !== "codex") throw new Error("Configured provider models currently require Codex workers.");
+    const providers = await templateProviders();
+    const ready = providers.validateCodexRunReadiness(reference.providerId, reference.modelId,
+      key => typeof process.env[key] === "string" && !!process.env[key]!.trim());
+    if (!ready.ready) throw new Error("Selected model needs local setup or a host-entered credential. No fallback was selected.");
+    return { provider: reference.providerId, model: reference.modelId, catalog_path: templateCatalogPath };
+  },
+  createTeam: async (config: import("../shared/types.ts").TeamConfig) => {
+    const providers = await templateProviders();
+    // This callback runs only after the template tool has validated explicit run approval.
+    const catalogPath = join(homedir(), ".multiagents", `runtime-catalog-${randomUUID()}.json`);
+    await Bun.write(catalogPath, JSON.stringify(providers.buildRuntimeCatalog(), null, 2));
+    const resolved = structuredClone(config);
+    for (const agent of resolved.agents) if (agent.model_selection) agent.model_selection.catalog_path = catalogPath;
+    return callOrchestratorTool("create_team", resolved as unknown as Record<string, unknown>);
+  },
+});
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
+    ...templateTools.tools,
     {
       name: "list_models",
       description: "List selectable Codex providers/models from a VS Code catalog. Returns safe metadata only, never credential values.",
@@ -445,6 +499,7 @@ Each agent receives role-specific best practices, tool discovery hints, and comp
           session_id: { type: "string" },
           target: { type: "string", description: "Agent name, role, or slot ID" },
           message: { type: "string" },
+          new_task: { type: "boolean", description: "Assign this message as new work, clearing previous approval before delivery. Can be queued for a disconnected slot." },
         },
         required: ["session_id", "target", "message"],
       },
@@ -486,7 +541,7 @@ Each agent receives role-specific best practices, tool discovery hints, and comp
         type: "object" as const,
         properties: {
           session_id: { type: "string" },
-          action: { type: "string", enum: ["pause_all", "resume_all", "pause_agent", "resume_agent", "extend_budget", "set_budget", "status"] },
+          action: { type: "string", enum: ["pause_all", "resume_all", "pause_agent", "resume_agent", "interrupt_agent", "extend_budget", "set_budget", "status"] },
           target: { type: "string", description: "Agent name/role/slot for agent-level actions, or guardrail_id for set_budget" },
           value: { type: "number", description: "New value for budget actions" },
         },
@@ -505,6 +560,15 @@ Each agent receives role-specific best practices, tool discovery hints, and comp
           new_value: { type: "number" },
         },
         required: ["session_id", "action"],
+      },
+    },
+    {
+      name: "get_chat_observation",
+      description: "Read a bounded operational snapshot for a chat watcher. Includes connection, workflow, plan and agent reports; excludes private reasoning and runtime credentials. Does not consume events or start workers.",
+      inputSchema: {
+        type: "object" as const,
+        properties: { session_id: { type: "string", minLength: 1 } },
+        required: ["session_id"],
       },
     },
     {
@@ -616,11 +680,14 @@ Each agent receives role-specific best practices, tool discovery hints, and comp
 }));
 
 // Tool implementations
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const { name, arguments: args } = request.params;
+async function callOrchestratorTool(name: string, args: Record<string, unknown> = {}): Promise<any> {
   const brokerClient = new BrokerClient(BROKER_URL);
 
   try {
+    if (Object.hasOwn(templateTools.handlers, name)) {
+      const result = await (templateTools.handlers as Record<string, (args: Record<string, unknown>) => Promise<any>>)[name]!(args);
+      return result?.content ? result : { content: [{ type: "text", text: JSON.stringify(result) }] };
+    }
     switch (name) {
       case "list_models": {
         const { catalog_path, project_dir } = args as { catalog_path?: string; project_dir?: string };
@@ -664,6 +731,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             : "No agent CLIs found. Install claude, codex, or gemini CLI first.";
           const failedList = unavailable.map(u => `${u.name} (${u.type})`).join(", ");
           return {
+            isError: true,
             content: [{
               type: "text",
               text: `Cannot create team — the following agent CLIs are not installed: ${failedList}.\n\n${availableList}\n\nPlease adjust your team to only use available agent types, or install the missing CLIs.`,
@@ -898,14 +966,26 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       // ---- direct_agent ----
       case "direct_agent": {
-        const { session_id, target, message } = args as {
+        const { session_id, target, message, new_task } = args as {
           session_id: string;
           target: string;
           message: string;
+          new_task?: boolean;
         };
         const slot = await resolveTarget(session_id, target, brokerClient);
-        if (!slot || !slot.peer_id) {
+        if (!slot || (!slot.peer_id && !new_task)) {
           return { content: [{ type: "text", text: `Could not find connected agent matching "${target}".` }] };
+        }
+
+        if (new_task) {
+          const snapshot = safeJsonParse<Record<string, unknown>>(slot.context_snapshot, {});
+          sessionCompletionTimers.delete(session_id);
+          await brokerClient.updateSlot({ id: slot.id, task_state: "working", context_snapshot: JSON.stringify({
+            ...snapshot, current_task: message, task_assigned_at: Date.now(),
+          }) });
+          if (!slot.peer_id || slot.status !== "connected") {
+            return { content: [{ type: "text", text: `New task saved for ${slot.display_name ?? slot.id}; previous approval cleared. Resume the session to start this disconnected worker.` }] };
+          }
         }
 
         await brokerClient.sendMessage({
@@ -1027,6 +1107,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       // ---- control_session ----
+      case "get_chat_observation": {
+        const { session_id } = args as { session_id: string };
+        return { content: [{ type: "text", text: JSON.stringify(await getChatObservation(brokerClient, session_id)) }] };
+      }
+
       case "control_session": {
         const { session_id, action, target, value } = args as {
           session_id: string;
@@ -1034,8 +1119,26 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           target?: string;
           value?: number;
         };
+        if (action === "interrupt_agent") {
+          const slots = await brokerClient.listSlots(session_id);
+          const matches = slots.filter(slot => String(slot.id) === target || slot.display_name === target);
+          if (matches.length !== 1) return { isError: true, content: [{ type: "text", text: "Interrupt requires an exact, unique agent name or slot ID." }] };
+          const slot = matches[0]!;
+          const state = activeCodexDrivers.get(session_id)?.get(slot.id);
+          const thread = state?.threadId ?? state?.driver.threadId;
+          if (!state || !thread || !state.driver.activeTurnId) {
+            return { isError: true, content: [{ type: "text", text: "No active Codex turn owned by this MCP server. No interrupt was sent." }] };
+          }
+          // Hold incoming work before interruption. Unlike cooperative pause,
+          // retain locks: an in-flight tool may still be touching those files.
+          await brokerClient.updateSlot({ id: slot.id, paused: true, paused_at: Date.now() });
+          await brokerClient.holdMessages(session_id, slot.id);
+          try { await state.driver.interrupt(thread); }
+          catch { return { isError: true, content: [{ type: "text", text: "Interrupt acknowledgement unavailable; slot remains paused. Inspect before retrying." }] }; }
+          return { content: [{ type: "text", text: "Interrupt requested; new work is held. Tool side effects may still finish; this is not rollback. Use resume_agent after sending revised conditions." }] };
+        }
         const result = await controlSession(session_id, action, brokerClient, target, value);
-        return { content: [{ type: "text", text: result.message }] };
+        return { isError: result.status === "error", content: [{ type: "text", text: result.message }] };
       }
 
       // ---- adjust_guardrail ----
@@ -1384,6 +1487,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         for (const slot of disconnected) {
           if (slot.model_selection) await validateAgentModel({ agent_type: slot.agent_type, model_selection: slot.model_selection }, session.project_dir);
         }
+        // An explicitly resumed worker has new work, not its previous approval.
+        // Reset before launching; slow startup must not trigger auto-completion.
+        sessionCompletionTimers.delete(session_id);
+        for (const slot of disconnected) {
+          const taskState = slot.task_state === "addressing_feedback" ? "addressing_feedback" : "working";
+          await brokerClient.updateSlot({ id: slot.id, task_state: taskState, paused: false, paused_at: null });
+          slot.task_state = taskState;
+        }
         await brokerClient.updateSession({ id: session_id, status: "active", pause_reason: null, paused_at: null });
         activeSessions.set(session_id, { projectDir: session.project_dir });
 
@@ -1443,6 +1554,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               "",
               `Your role: ${slot.role ?? "unassigned"}`,
               slot.role_description ? `Role description: ${slot.role_description}` : "",
+              snapshot.current_task ? `CURRENT ASSIGNMENT (supersedes previous task): ${snapshot.current_task}` : "",
               snapshot.last_summary ? `Your last status: ${snapshot.last_summary}` : "",
               snapshot.task_state ? `Your task state when you left: ${snapshot.task_state}` : "",
               "",
@@ -1555,7 +1667,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     log(LOG_PREFIX, `Tool error (${name}): ${errMsg}`);
     return { content: [{ type: "text", text: `Error: ${errMsg}` }], isError: true };
   }
-});
+}
+server.setRequestHandler(CallToolRequestSchema, request => callOrchestratorTool(request.params.name, request.params.arguments));
 
 // --- Background loops ---
 
@@ -1626,13 +1739,15 @@ function startBackgroundLoops(brokerClient: BrokerClient): void {
     for (const [sessionId, drivers] of activeCodexDrivers) {
       for (const [slotId, state] of drivers) {
         if (!state.driver.alive) continue;
+        try {
+          const slot = await brokerClient.getSlot(slotId);
+          if (slot.paused || (await brokerClient.getSession(sessionId)).status !== "active") continue;
+        } catch { continue; }
         const threadId = state.threadId ?? state.driver.threadId;
         if (!threadId) continue; // First turn hasn't completed yet
 
-        // --- Interrupt + signal_done turn: if Codex turn is active but idle for >60s ---
-        // The Codex LLM can get stuck in a single long inference call after completing work.
-        // turn/steer only works between loop iterations — it can't interrupt mid-generation.
-        // Instead: interrupt the stuck turn, then start a new focused turn for signal_done.
+        // Silence is an observation, never evidence of completed work. Do not
+        // interrupt inference or inject instructions to declare success.
         const INTERRUPT_IDLE_MS = 60_000;
         const now = Date.now();
         if (
@@ -1641,28 +1756,16 @@ function startBackgroundLoops(brokerClient: BrokerClient): void {
           now - state.lastNudge > INTERRUPT_IDLE_MS
         ) {
           state.lastNudge = now;
-          log(LOG_PREFIX, `Codex slot ${slotId} stuck for ${Math.round((now - state.driver.lastNotificationActivity) / 1000)}s — interrupting turn and requesting signal_done`);
+          const message = "No recent worker activity; needs inspection. Work is not confirmed complete.";
+          handleEvent({ type: "agent_needs_inspection", severity: "warning", slotId, sessionId, message });
           try {
-            await state.driver.interrupt(threadId);
-          } catch {
-            // Interrupt can fail if turn already completed
-          }
-          // Wait a moment for the turn to fully complete after interrupt
-          await new Promise(r => setTimeout(r, 2000));
-          // Start a new focused turn asking only for signal_done
-          if (!state.driver.activeTurnId && !state.busy) {
-            state.busy = true;
-            state.driver.reply(threadId, "Your previous task is complete. Call signal_done NOW with a summary of what you accomplished. This is the ONLY thing you need to do.")
-              .then(async (result) => {
-                state.threadId = result.threadId;
-                state.busy = false;
-                log(LOG_PREFIX, `Codex slot ${slotId} signal_done turn completed`);
-              })
-              .catch((err) => {
-                state.busy = false;
-                log(LOG_PREFIX, `Codex slot ${slotId} signal_done turn failed: ${err}`);
-              });
-          }
+            const slot = await brokerClient.getSlot(slotId);
+            const snapshot = safeJsonParse<Record<string, unknown>>(slot.context_snapshot, {});
+            await brokerClient.updateSlot({ id: slotId, context_snapshot: JSON.stringify({
+              ...snapshot, attention: { reason: message, observed_at: now,
+                last_activity_at: state.driver.lastNotificationActivity },
+            }) });
+          } catch { /* observation must not interfere with worker execution */ }
         }
 
         // If a reply() is in flight, skip — don't even poll. Messages
@@ -1758,16 +1861,8 @@ function startBackgroundLoops(brokerClient: BrokerClient): void {
             const agentName = slot.display_name || `slot ${slot.id}`;
             const silentMin = Math.round(silentMs / 60000);
 
-            // Nudge the agent
-            await brokerClient.sendMessage({
-              from_id: "orchestrator",
-              to_id: slot.peer_id,
-              text: `[NUDGE] You have been silent for ${silentMin} minutes. ` +
-                    `Check your teammates with check_team_status and check_messages. ` +
-                    `If you are done, call signal_done. If you are blocked, send a message to "orchestrator" explaining what you need.`,
-              msg_type: "system",
-              session_id: sessionId,
-            });
+            // Surface silence to the operator only. Automated messages can
+            // interrupt useful work and amplify into a completion/nudge loop.
 
             // Also alert the orchestrator user via pending events
             pendingEvents.push({
@@ -1865,40 +1960,16 @@ function startBackgroundLoops(brokerClient: BrokerClient): void {
   // --- Session auto-end: archive session when all agents are approved/released ---
   // Checks every 30s. Waits for a 30s grace period after the last approval
   // to allow agents to see the final state before killing processes.
-  const sessionCompletionTimers: Map<string, number> = new Map();
   setInterval(async () => {
     for (const sessionId of activeProcesses.keys()) {
       try {
         const slots = await brokerClient.listSlots(sessionId);
         if (slots.length === 0) continue;
 
-        // --- Auto-approve orphaned done_pending_review agents ---
-        // When all reviewer/QA agents are approved/released/disconnected but some
-        // non-reviewer agents are still at done_pending_review, there's nobody left
-        // to approve them. Auto-approve to unblock session completion.
-        const reviewerSlots = slots.filter((s) => s.role && /qa|review|test|lead/i.test(s.role));
-        const allReviewersDone = reviewerSlots.length > 0 && reviewerSlots.every(
-          (s) => (s as any).task_state === "approved" || (s as any).task_state === "released" || s.status === "disconnected"
-        );
-        if (allReviewersDone) {
-          const orphaned = slots.filter(
-            (s) => (s as any).task_state === "done_pending_review" && !(s.role && /qa|review|test|lead/i.test(s.role))
-          );
-          for (const slot of orphaned) {
-            log(LOG_PREFIX, `Auto-approving orphaned ${slot.display_name ?? `slot ${slot.id}`} (all reviewers done, no one left to approve)`);
-            await brokerClient.updateSlot({ id: slot.id, task_state: "approved" } as any);
-            pendingEvents.push({
-              type: "auto_approved",
-              severity: "info",
-              slotId: slot.id,
-              sessionId,
-              message: `${slot.display_name ?? `slot ${slot.id}`} auto-approved: all reviewers finished, no pending review possible.`,
-            });
-          }
-        }
+        // Missing reviewers leave work awaiting review, not automatically approved.
 
         const allDone = slots.every(
-          (s) => (s as any).task_state === "approved" || (s as any).task_state === "released" || s.status === "disconnected"
+          (s) => (s as any).task_state === "approved" || (s as any).task_state === "released"
         );
         const anyApproved = slots.some((s) => (s as any).task_state === "approved" || (s as any).task_state === "released");
 
@@ -1998,6 +2069,7 @@ function startBackgroundLoops(brokerClient: BrokerClient): void {
         for (const slot of slots) {
           const stopped = () => intentionallyStoppedSlots.has(slot.id) || !activeSessions.has(sessionId);
           if (stopped()) continue;
+          if (slot.paused) continue;
           const taskState = (slot as any).task_state;
           if (taskState === "released") continue;
 

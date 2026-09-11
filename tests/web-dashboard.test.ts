@@ -145,6 +145,23 @@ describe("Web Dashboard — HTTP server", () => {
 });
 
 describe("Web Dashboard — API endpoints", () => {
+  test("broker persists cumulative usage idempotently and retains quota through activity snapshots", async () => {
+    const slot = await brokerPost("/slots/create", { session_id: "dash-test-session", agent_type: "codex", display_name: "Usage fixture" });
+    const agent_usage = { kind: "tokens", stream: "a".repeat(64), totals: { input: 120, cached: 40, output: 30 } };
+    await brokerPost("/slots/update", { id: slot.id, agent_usage });
+    await brokerPost("/slots/update", { id: slot.id, agent_usage });
+    await brokerPost("/slots/update", { id: slot.id, agent_usage: { kind: "quota", bucket: "b".repeat(64), primary: { usedPercent: 50, windowMinutes: 300, resetsAt: null } } });
+    const updated = await brokerPost("/slots/update", { id: slot.id, context_snapshot: "{\"last_summary\":\"still working\"}" });
+    expect(updated.input_tokens).toBe(120);
+    expect(updated.cache_read_tokens).toBe(40);
+    expect(updated.output_tokens).toBe(30);
+    expect(Object.values(JSON.parse(updated.agent_usage).quotas)[0]).toMatchObject({ primary: { usedPercent: 50 } });
+    const invalid = await fetch(`${BROKER_URL}/slots/update`, { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: slot.id, agent_usage: { ...agent_usage, totals: { input: -1, cached: 0, output: 0 } } }) });
+    expect(invalid.ok).toBe(false);
+    const unchanged = await brokerPost("/slots/get", { id: slot.id });
+    expect(unchanged.input_tokens).toBe(120);
+  });
   test("/api/sessions returns session list", async () => {
     const res = await fetch(`${DASHBOARD_URL}/api/sessions`);
     expect(res.status).toBe(200);

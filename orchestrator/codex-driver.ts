@@ -26,6 +26,7 @@ import { codexCommand } from "../shared/codex-executable.ts";
 
 export interface CodexRuntimeConfig {
   configArgs?: string[];
+  allowAll?: boolean;
   model?: string;
   modelProvider?: string;
   processCwd?: string;
@@ -178,7 +179,11 @@ export class CodexDriver {
     timeoutMs = 30_000,
     runtime: CodexRuntimeConfig = {},
   ): Promise<CodexDriver> {
-    const proc = Bun.spawn([...codexCommand(env), "app-server", ...(runtime.configArgs ?? [])], {
+    runtime = { ...runtime, allowAll: runtime.allowAll ?? env.MULTIAGENTS_CODEX_ALLOW_ALL === "1" };
+    const approvalArgs = runtime.allowAll
+      ? ["-c", 'mcp_servers.multiagents-peer.default_tools_approval_mode="approve"']
+      : [];
+    const proc = Bun.spawn([...codexCommand(env), "app-server", ...(runtime.configArgs ?? []), ...approvalArgs], {
       cwd: runtime.processCwd ?? cwd,
       stdin: "pipe",
       stdout: "pipe",
@@ -227,6 +232,7 @@ export class CodexDriver {
     const threadResult = await this.sendRequest("thread/start", {
       ...(this.runtime.model ? { model: this.runtime.model, modelProvider: this.runtime.modelProvider } : {}),
       ...(this.runtime.threadCwd ? { cwd: this.runtime.threadCwd } : {}),
+      ...(this.runtime.allowAll ? { approvalPolicy: "never", sandbox: "danger-full-access" } : {}),
     }, 30_000) as { thread: { id: string } };
     const threadId = threadResult.thread?.id;
     if (!threadId) throw new Error("thread/start did not return a thread ID");
@@ -240,14 +246,15 @@ export class CodexDriver {
     if (opts.cwd) turnInput.cwd = opts.cwd;
     // Codex app-server expects sandboxPolicy as a serde internally-tagged enum.
     // Convert our simplified string to the full object format.
-    if (opts.sandbox) {
+    if (this.runtime.allowAll) {
+      turnInput.sandboxPolicy = sandboxPolicyObject("danger-full-access");
+    } else if (opts.sandbox) {
       turnInput.sandboxPolicy = sandboxPolicyObject(opts.sandbox, opts.cwd);
     }
     if (opts.developerInstructions) turnInput.developerInstructions = opts.developerInstructions;
     if (this.runtime.model ?? opts.model) turnInput.model = this.runtime.model ?? opts.model;
-    // Enable fully autonomous execution (equivalent to `codex exec -a never`).
-    // Without this, MCP tool calls require interactive approval which hangs in headless mode.
-    // The schema accepts: "untrusted" | "on-failure" | "on-request" | "never"
+    // Never prompt in a headless process. This is NOT allow-all: MCP tools that
+    // require approval still fail unless their server policy explicitly permits them.
     turnInput.approvalPolicy = "never";
 
     const result = await this.startTurnAndWait(threadId, turnInput);
@@ -267,6 +274,7 @@ export class CodexDriver {
       threadId,
       input: [{ type: "text", text: prompt }],
       approvalPolicy: "never",
+      ...(this.runtime.allowAll ? { sandboxPolicy: sandboxPolicyObject("danger-full-access") } : {}),
       ...(this.runtime.model ? { model: this.runtime.model } : {}),
     });
 
@@ -305,6 +313,9 @@ export class CodexDriver {
       threadId,
       ...(this.runtime.model ? { model: this.runtime.model, modelProvider: this.runtime.modelProvider } : {}),
       ...(this.runtime.threadCwd ? { cwd: this.runtime.threadCwd } : {}),
+      // Reset saved full access when the operator removes the opt-in.
+      approvalPolicy: "never",
+      sandbox: this.runtime.allowAll ? "danger-full-access" : "workspace-write",
     }) as { thread: { id: string } };
     if (!result.thread?.id) throw new Error("thread/resume did not return a thread ID");
     this._threadId = result.thread.id;

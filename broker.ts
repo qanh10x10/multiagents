@@ -22,6 +22,7 @@ import {
   CLEANUP_INTERVAL,
 } from "./shared/constants.ts";
 import { generatePeerId, safeJsonParse } from "./shared/utils.ts";
+import { applyUsageUpdate } from "./shared/agent-usage.ts";
 import type {
   RegisterRequest,
   RegisterResponse,
@@ -173,9 +174,16 @@ db.run(`
     last_connected INTEGER,
     last_disconnected INTEGER,
     context_snapshot TEXT,
-    model_selection TEXT
+    model_selection TEXT,
+    input_tokens INTEGER DEFAULT 0,
+    output_tokens INTEGER DEFAULT 0,
+    cache_read_tokens INTEGER DEFAULT 0,
+    agent_usage TEXT
   )
 `);
+
+// Run after CREATE so fresh databases and existing installations both get telemetry.
+try { db.run("ALTER TABLE slots ADD COLUMN agent_usage TEXT"); } catch { /* already present */ }
 
 db.run(`
   CREATE TABLE IF NOT EXISTS file_locks (
@@ -269,14 +277,18 @@ db.run(`
 
 // --- Context snapshot builder ---
 
-/** Activity snapshots may replace summaries, but must retain the resume handle. */
+/** Activity snapshots may replace summaries, but retain resume and assignment context. */
 function preserveThreadId(slotId: number, snapshot: string | null): string | null {
   const row = db.query("SELECT context_snapshot FROM slots WHERE id = ?").get(slotId) as { context_snapshot: string | null } | null;
-  const previous = safeJsonParse<{ codex_thread_id?: string }>(row?.context_snapshot ?? null, {});
-  if (typeof previous?.codex_thread_id !== "string" || !previous.codex_thread_id) return snapshot;
+  const previous = safeJsonParse<{ codex_thread_id?: string; current_task?: string; task_assigned_at?: number }>(row?.context_snapshot ?? null, {});
+  const retained: Record<string, unknown> = {};
+  if (typeof previous?.codex_thread_id === "string") retained.codex_thread_id = previous.codex_thread_id;
+  if (typeof previous?.current_task === "string") retained.current_task = previous.current_task;
+  if (typeof previous?.task_assigned_at === "number") retained.task_assigned_at = previous.task_assigned_at;
+  if (!Object.keys(retained).length) return snapshot;
   const incoming = safeJsonParse<Record<string, unknown>>(snapshot, {});
   const context = incoming && typeof incoming === "object" && !Array.isArray(incoming) ? incoming : {};
-  return JSON.stringify({ codex_thread_id: previous.codex_thread_id, ...context });
+  return JSON.stringify({ ...retained, ...context });
 }
 
 /** Build a rich context snapshot for a disconnecting peer/slot. */
@@ -891,6 +903,14 @@ function handleUpdateSlot(body: UpdateSlotRequest): Slot | null {
   if ("model_selection" in body) throw new Error("model_selection is immutable; create a new slot to change models");
   const fields: string[] = [];
   const values: any[] = [];
+  if (body.agent_usage !== undefined) {
+    if ([body.input_tokens, body.output_tokens, body.cache_read_tokens].some(v => v !== undefined)) throw new Error("Do not mix cumulative telemetry and token deltas");
+    const existing = handleGetSlot({ id: body.id });
+    if (!existing) return null;
+    const { state, delta } = applyUsageUpdate(existing.agent_usage, body.agent_usage);
+    fields.push("agent_usage = ?", "input_tokens = COALESCE(input_tokens, 0) + ?", "output_tokens = COALESCE(output_tokens, 0) + ?", "cache_read_tokens = COALESCE(cache_read_tokens, 0) + ?");
+    values.push(JSON.stringify(state), delta.input, delta.output, delta.cached);
+  }
 
   if (body.peer_id !== undefined) { fields.push("peer_id = ?"); values.push(body.peer_id); }
   if (body.paused !== undefined) { fields.push("paused = ?"); values.push(body.paused ? 1 : 0); }

@@ -42,6 +42,18 @@ Built on [MCP (Model Context Protocol)](https://modelcontextprotocol.io/).
 
 ## Quick Start
 
+### VS Code Copilot on Windows (This Checkout)
+
+1. Run `setup-copilot.bat` from this checkout. It checks prerequisites and writes workspace `.vscode/mcp.json` for `multiagents-orch`, using absolute Bun and orchestrator paths. It discovers your local model catalog without copying keys.
+2. In VS Code, open this checkout, review workspace/server trust, then use **MCP: List Servers** to start `multiagents-orch`. In extension-host mode, enter a provider key only in VS Code's masked input; leave unused providers blank. No manual environment setup is needed in this default mode.
+3. Open Copilot **Agent**, enable the server's tools, and ask: "Call `list_models` only and show available provider/model IDs. Do not create a team." This reads the local catalog without provider requests or worker charges; a missing catalog does not block MCP tool discovery.
+
+Interactive `${input:...}` servers are **not forwarded to Agent Host**. Use extension-host mode, or rerun `setup-copilot.bat --credentials env` and supply real credentials separately in the launching host's environment. Setup does not toggle global settings, trust, or sampling. See the [Copilot setup guide](docs/copilot-setup.md) for checks, host limitations, and the optional `/multiagents` prompt.
+
+MCP adds tools, not a model-intelligence upgrade: normal Copilot Agent already has tools. Multiagents adds separate worker models/contexts, durable coordination (locks, knowledge, status, recovery), and observability. Teams add setup, latency, and provider cost; ordinary Copilot is simpler for small tasks. `start-dashboard.bat` remains monitoring-only, not MCP setup or a team launcher.
+
+### CLI Setup
+
 ```bash
 # Install globally
 bun install -g multiagents
@@ -87,7 +99,7 @@ The orchestrator **drives Codex turns**: the forwarding loop polls the broker ev
 
 ### Provider Model Catalog
 
-Copy your VS Code `chatLanguageModels.json` catalog into the project's `.multiagents/chatLanguageModels.json`, or set `MULTIAGENTS_MODELS_FILE` to an external catalog path. Do not copy credentials into the project or commit secrets. Catalog lookup uses an explicit path first, then the environment variable, then the project default; relative paths resolve against the project directory (CLI: current directory).
+For VS Code on Windows, the [workspace setup](docs/copilot-setup.md) discovers your user `chatLanguageModels.json` and references it without copying it. For other launch paths, set `MULTIAGENTS_MODELS_FILE` to an external catalog path or provide a credential-free catalog at `.multiagents/chatLanguageModels.json`. Do not copy credentials into the project or commit secrets. Catalog lookup uses an explicit path first, then the environment variable, then the project default; relative paths resolve against the project directory (CLI: current directory).
 
 List a file locally without starting the broker, contacting providers, or requiring credentials:
 
@@ -99,7 +111,7 @@ bun cli.ts models --help
 
 On this Windows setup, optional direct inspection uses `bun cli.ts models --file "C:\Users\PC\AppData\Roaming\Code\User\chatLanguageModels.json" --json`. This reads only the specified catalog, not VS Code settings or secret storage. The CLI requires `--file`; JSON contains allowlisted metadata and environment variable names, never credential values. Missing files, invalid catalogs, and invalid arguments fail with sanitized errors and a nonzero exit code.
 
-- **Credentials**: VS Code `${input:chat.lm.secret...}` references cannot be resolved outside VS Code. Provider names derive environment keys: `Hollow` uses `HOLLOW_API_KEY`, `ADNX` uses `ADNX_API_KEY`. Alternatively, set the catalog's `apiKey` to a reference such as `${env:PROVIDER_API_KEY}`. Literal API keys are rejected. Set credentials in the orchestrator's environment before launching or resuming workers.
+- **Credentials**: VS Code `${input:chat.lm.secret...}` references cannot be resolved outside VS Code. Provider names derive environment keys: `Hollow` uses `HOLLOW_API_KEY`, `ADNX` uses `ADNX_API_KEY`. Alternatively, set the catalog's `apiKey` to a reference such as `${env:PROVIDER_API_KEY}`. Literal API keys are rejected. Default Copilot setup creates new masked VS Code inputs and maps them to safe credential environment keys; it does not read existing secret storage. For other launch paths or `--credentials env`, supply credentials in the orchestrator's environment before launching or resuming workers.
 - **Compatibility**: Only `customendpoint` providers with `apiType: "responses"` are supported. Launch requires the selected model to declare `toolCalling: true` and its credential environment variable to be present. Listing does not require credentials or tool calling. Vision, token limits, and zero-data-retention fields are unverified catalog claims, not tested capabilities or privacy guarantees.
 - **MCP discovery**: Call orchestrator `list_models` with optional `catalog_path` and `project_dir`. Use the returned `provider` and `model` exactly in `create_team.agents[].model_selection` or `add_agent.model_selection`: `{ "provider": "Hollow", "model": "<catalog model ID>", "catalog_path": ".multiagents/chatLanguageModels.json" }`. `catalog_path` is optional; `agent_type` must be `"codex"`.
 - **Runtime**: Selected models always run through Codex app-server, regardless of model ID prefixes such as `ag/`; a prefix does not select Claude or Gemini. Configuration is per worker, without changing global Codex configuration. Provider/model selection and the absolute catalog path persist for recovery and MCP `resume_session`; the catalog and environment credential must remain available. Terminal `session resume` intentionally does not support selected models; use MCP `resume_session` instead.
@@ -151,7 +163,7 @@ Agents **cannot disconnect** until explicitly released. This ensures the review 
 | `query_knowledge` | Query knowledge entries by key or category |
 | `remove_knowledge` | Remove outdated knowledge entries |
 
-## Orchestrator Tools (Claude Desktop)
+## Orchestrator Tools (Claude Desktop / VS Code Copilot)
 
 | Tool | Description |
 |------|-------------|

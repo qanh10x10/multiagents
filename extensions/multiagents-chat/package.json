@@ -1,0 +1,80 @@
+{
+  "name": "multiagents-chat",
+  "displayName": "Multiagents Chat",
+  "description": "Điều phối AI và xem hội thoại của nhóm multiagents hiện có trong VS Code Chat.",
+  "publisher": "multiagents-local",
+  "version": "0.1.2",
+  "private": true,
+  "files": [
+    "extension.cjs",
+    "core.cjs",
+    "coordinator.cjs",
+    "panel.cjs",
+    "panel.js",
+    "panel.css",
+    "README.md"
+  ],
+  "engines": {
+    "vscode": "^1.105.0"
+  },
+  "main": "./extension.cjs",
+  "activationEvents": [
+    "onChatParticipant:multiagents.chat"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false
+    }
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "multiagents.openConversation",
+        "title": "Multiagents: Mở phòng hội thoại"
+      }
+    ],
+    "chatParticipants": [
+      {
+        "id": "multiagents.chat",
+        "name": "multiagents",
+        "fullName": "Multiagents",
+        "description": "Trao đổi bằng model đang chọn (có dùng token/quota), xem báo cáo và xác nhận điều khiển worker.",
+        "isSticky": true,
+        "commands": [
+          {
+            "name": "session",
+            "description": "Chọn hoặc đổi phiên hội thoại"
+          },
+          {
+            "name": "watch",
+            "description": "Theo dõi báo cáo: ID phiên (dừng Chat chỉ kết thúc theo dõi)"
+          },
+          {
+            "name": "status",
+            "description": "Đọc trạng thái: ID phiên"
+          },
+          {
+            "name": "pause",
+            "description": "Tạm dừng: ID phiên | tên chính xác hoặc ID worker"
+          },
+          {
+            "name": "interrupt",
+            "description": "Yêu cầu ngắt: ID phiên | worker"
+          },
+          {
+            "name": "direct",
+            "description": "Gửi điều kiện: ID phiên | worker | điều kiện"
+          },
+          {
+            "name": "resume",
+            "description": "Tiếp tục: để trống để chọn; khởi động lại cần xác nhận"
+          },
+          {
+            "name": "stop",
+            "description": "Dừng một worker có xác nhận: ID phiên | worker"
+          }
+        ]
+      }
+    ]
+  }
+}

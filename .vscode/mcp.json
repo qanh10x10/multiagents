@@ -1,0 +1,33 @@
+{
+  "servers": {
+    "multiagents-orch": {
+      "type": "stdio",
+      "command": "C:\\Users\\PC\\.bun\\bin\\bun.exe",
+      "args": [
+        "C:\\Users\\PC\\Desktop\\OutSources\\Git\\multiagents\\orchestrator\\orchestrator-server.ts"
+      ],
+      "cwd": "C:\\Users\\PC\\Desktop\\OutSources\\Git\\multiagents",
+      "env": {
+        "MULTIAGENTS_CODEX_ALLOW_ALL": "1",
+        "MULTIAGENTS_DB": "C:/Users/PC/.multiagents/peers.db",
+        "MULTIAGENTS_MODELS_FILE": "C:\\Users\\PC\\AppData\\Roaming\\Code\\User\\chatLanguageModels.json",
+        "ADNX_API_KEY": "${input:multiagents-orch-key-ADNX_API_KEY}",
+        "HOLLOW_API_KEY": "${input:multiagents-orch-key-HOLLOW_API_KEY}"
+      }
+    }
+  },
+  "inputs": [
+    {
+      "id": "multiagents-orch-key-ADNX_API_KEY",
+      "type": "promptString",
+      "description": "multiagents: ADNX_API_KEY. Unused provider can leave blank. Enter only in this VS Code password prompt.",
+      "password": true
+    },
+    {
+      "id": "multiagents-orch-key-HOLLOW_API_KEY",
+      "type": "promptString",
+      "description": "multiagents: HOLLOW_API_KEY. Unused provider can leave blank. Enter only in this VS Code password prompt.",
+      "password": true
+    }
+  ]
+}

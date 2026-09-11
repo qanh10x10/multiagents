@@ -40,6 +40,11 @@ test("broker persists immutable selection across snapshots/restarts and migrates
     await post("/slots/update", { id, context_snapshot: JSON.stringify({ codex_thread_id: "resume-this-thread", last_summary: "bootstrap" }) });
     await post("/slots/update", { id, context_snapshot: JSON.stringify({ last_summary: "overwritten" }), status: "disconnected" });
     expect(JSON.parse((await post("/slots/get", { id })).body.context_snapshot)).toEqual({ codex_thread_id: "resume-this-thread", last_summary: "overwritten" });
+    await post("/slots/update", { id, context_snapshot: JSON.stringify({ current_task: "New assignment", task_assigned_at: 123 }) });
+    await post("/slots/update", { id, context_snapshot: JSON.stringify({ last_summary: "Tool completed" }) });
+    expect(JSON.parse((await post("/slots/get", { id })).body.context_snapshot)).toEqual({
+      codex_thread_id: "resume-this-thread", current_task: "New assignment", task_assigned_at: 123, last_summary: "Tool completed",
+    });
     expect((await post("/slots/get", { id })).body.model_selection).toEqual(selection);
     for (const invalid of [
       { ...selection, apiKey: "must-not-persist" },

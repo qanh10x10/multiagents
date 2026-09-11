@@ -127,6 +127,7 @@ export interface Slot {
   input_tokens: number;
   output_tokens: number;
   cache_read_tokens: number;
+  agent_usage?: string | null; // JSON: numeric telemetry and durable cumulative checkpoints
 }
 
 export interface FileLock {
@@ -331,6 +332,7 @@ export interface UpdateSlotRequest {
   input_tokens?: number;
   output_tokens?: number;
   cache_read_tokens?: number;
+  agent_usage?: import("./agent-usage.ts").AgentUsageUpdate;
 }
 
 // --- Lifecycle handoff requests ---

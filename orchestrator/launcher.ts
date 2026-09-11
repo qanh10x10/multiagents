@@ -17,6 +17,7 @@ import { homedir } from "node:os";
 import { codexCommand } from "../shared/codex-executable.ts";
 import { resolveModelSelection } from "../shared/model-providers.ts";
 import { selectedCodexRuntime, validateSelectedEnvironmentKey } from "./selected-codex-runtime.ts";
+import { withEccWorkflow } from "../shared/ecc.ts";
 
 const LOG_PREFIX = "launcher";
 
@@ -166,6 +167,8 @@ function selectedCodexPeerArgs(
     const value = env[`MULTIAGENTS_${key}`];
     if (value) args.push(`--${flag}`, value);
   }
+  // Carry only launcher-resolved intent; keep the private worker env allowlist unchanged.
+  if (process.env.MULTIAGENTS_ECC === "1") args.push("--ecc-workflow");
   return args;
 }
 
@@ -461,13 +464,13 @@ export async function launchAgent(
 
     // Build developer instructions — keep brief to minimize Codex context size.
     // Large developer instructions slow down Codex LLM generation significantly.
-    const developerInstructions = [
+    const developerInstructions = withEccWorkflow([
       `You are "${config.name}", role: ${config.role}.`,
       enrichedDescription,
       "",
       "You have 'multiagents-peer' MCP tools: signal_done, set_summary, send_message, check_messages.",
       "When done: call signal_done with proof. Use set_summary to show progress.",
-    ].join("\n");
+    ].join("\n"));
 
     // --- Two-phase startup for fast threadId acquisition ---
     // Phase 1: Fast bootstrap turn (~5-9s) to get a threadId.
@@ -485,7 +488,8 @@ export async function launchAgent(
     // block causes it to burn minutes on MCP overhead before doing real work.
     // The developerInstructions already cover MCP tools — keep the task prompt
     // focused on the actual task with minimal MCP instructions.
-    const codexTaskPrompt = [
+    // Include the workflow in the real reply too: resumed threads skip developer instructions.
+    const codexTaskPrompt = withEccWorkflow([
       `You are "${config.name}", role: ${config.role}.`,
       enrichedDescription,
       "",
@@ -496,7 +500,7 @@ export async function launchAgent(
       "  → Call set_summary with a 1-line status update",
       "",
       "Focus on completing the task first. Use multiagents-peer MCP tools for team communication only when needed.",
-    ].join("\n");
+    ].join("\n"));
 
     const startPromise = (async () => {
       try {
@@ -709,6 +713,7 @@ export async function relaunchIntoSlot(
  * mcp_servers config key (replacing any broken global entries).
  */
 export function buildCliArgs(agentType: AgentType, task: string, env?: Record<string, string | undefined>): string[] {
+  task = withEccWorkflow(task);
   switch (agentType) {
     case "claude": {
       // Build inline MCP config JSON for --mcp-config.

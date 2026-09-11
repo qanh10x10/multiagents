@@ -12,6 +12,7 @@
 
 import { fileURLToPath } from "node:url";
 import { BrokerClient } from "../shared/broker-client.ts";
+import { createStudioApi } from "./api.ts";
 import {
   DEFAULT_BROKER_PORT,
   BROKER_HOSTNAME,
@@ -154,7 +155,7 @@ function isSessionComplete(state: DashboardState): boolean {
   const allDisconnected = state.slots.every(s => s.status === "disconnected");
   if (!allDisconnected) return false;
   const allDone = state.slots.every(s =>
-    s.task_state === "approved" || s.task_state === "released" || s.task_state === "done_pending_review"
+    s.task_state === "approved" || s.task_state === "released"
   );
   return allDone;
 }
@@ -217,6 +218,14 @@ let sessionId = await resolveSessionId(sessionArg);
 // --- HTML serving ---
 
 const indexHtml = Bun.file(fileURLToPath(new URL("./index.html", import.meta.url)));
+let studioOrchestrator: import("./orchestrator-client.ts").DashboardOrchestratorClient | undefined;
+const studio = createStudioApi({
+  createTeam: async (config, environment) => {
+    const { DashboardOrchestratorClient } = await import("./orchestrator-client.ts");
+    studioOrchestrator ??= new DashboardOrchestratorClient();
+    return studioOrchestrator.createTeam(config, { ...environment, MULTIAGENTS_STUDIO_OWNS_DASHBOARD: "1" });
+  },
+});
 
 const server = Bun.serve({
   port: WEB_DASHBOARD_PORT,
@@ -224,6 +233,19 @@ const server = Bun.serve({
 
   async fetch(req, server) {
     const url = new URL(req.url);
+
+    if (url.pathname === "/api/studio" || url.pathname.startsWith("/api/studio/")) {
+      return await studio.handle(req) ?? new Response("Not found", { status: 404 });
+    }
+
+    if ((url.pathname === "/app.css" || url.pathname === "/app.js") && req.method === "GET") {
+      const asset = Bun.file(fileURLToPath(new URL(`.${url.pathname}`, import.meta.url)));
+      if (!await asset.exists()) return new Response("Not found", { status: 404 });
+      return new Response(asset, { headers: {
+        "Content-Type": url.pathname.endsWith(".css") ? "text/css; charset=utf-8" : "text/javascript; charset=utf-8",
+        "X-Content-Type-Options": "nosniff",
+      } });
+    }
 
     // WebSocket upgrade
     if (url.pathname === "/ws") {

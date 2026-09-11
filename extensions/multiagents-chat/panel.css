@@ -1,0 +1,16 @@
+:root { color-scheme: light dark; }
+body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); padding: 20px; line-height: 1.6; }
+* { box-sizing: border-box; }
+h1 { font-size: 24px; margin-bottom: 4px; } h2 { font-size: 16px; }
+header p, .meta { color: var(--vscode-descriptionForeground); }
+select, button { font: inherit; color: var(--vscode-button-foreground); background: var(--vscode-button-background); border: 1px solid var(--vscode-contrastBorder, transparent); padding: 8px 12px; margin: 4px; max-width: 100%; }
+select { color: var(--vscode-dropdown-foreground); background: var(--vscode-dropdown-background); }
+:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: 3px; }
+main { display: grid; grid-template-columns: minmax(0, 2fr) minmax(190px, 1fr); gap: 24px; }
+main > * { min-width: 0; }
+#timeline { height: 54vh; overflow: auto; overflow-anchor: auto; scrollbar-gutter: stable; }
+article { border-bottom: 1px solid var(--vscode-panel-border); padding: 14px 4px; overflow-wrap: anywhere; }
+article p { white-space: pre-wrap; margin: 8px 0; } time { display: block; font-size: 12px; }
+details { margin-top: 20px; } summary { cursor: pointer; }
+#events { max-height: 240px; overflow: auto; } #status { border-left: 3px solid var(--vscode-focusBorder); padding-left: 12px; }
+@media(max-width: 640px) { body { padding: 12px; } main { grid-template-columns: minmax(0, 1fr); } }

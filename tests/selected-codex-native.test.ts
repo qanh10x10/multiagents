@@ -66,7 +66,9 @@ test.skipIf(!executable)("native selected config excludes synthetic global/proje
       MULTIAGENTS_SESSION: "native-fixture", MULTIAGENTS_SLOT: "1",
     });
     const resolved = await resolveModelSelection({ provider: "Selected", model: "selected-model", catalog_path: catalog }, project, env);
+    env.MULTIAGENTS_CODEX_ALLOW_ALL = "1";
     const selected = selectedCodexRuntime(resolved, env, project, ["offline-peer", "--slot", "1"]);
+    expect(selected.runtime.allowAll).toBe(true);
     const configFile = join(selected.env.CODEX_HOME!, "config.toml");
     expect(readFileSync(configFile, "utf8")).not.toContain("SYNTHETIC_");
     for (const key of ["CODEX_API_KEY", "OPENAI_API_KEY", "CODEX_SQLITE_HOME", "OPENAI_BASE_URL", "STALE_HEADER_KEY", "NODE_OPTIONS"]) expect(selected.env[key]).toBeUndefined();
@@ -90,6 +92,7 @@ test.skipIf(!executable)("native selected config excludes synthetic global/proje
       const peer = config.mcp_servers["multiagents-peer"];
       expect(peer.command).toBe(process.execPath);
       expect(peer.args).toEqual(["offline-peer", "--slot", "1"]);
+      expect(peer.default_tools_approval_mode).toBe("approve");
       for (const key of ["url", "bearer_token_env_var", "http_headers", "env_http_headers"]) expect(peer[key]).toBeUndefined();
       expect(JSON.stringify(config)).not.toContain("SYNTHETIC_");
       expect(config.cli_auth_credentials_store).toBe("file");

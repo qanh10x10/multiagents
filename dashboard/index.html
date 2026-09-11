@@ -11,8 +11,8 @@
       --surface2: #1c2333;
       --border: #2d333b;
       --text: #e6edf3;
-      --text-dim: #7d8590;
-      --text-muted: #484f58;
+      --text-dim: #a0a9b5;
+      --text-muted: #929cab;
       --accent: #58a6ff;
       --green: #3fb950;
       --yellow: #d29922;
@@ -67,6 +67,7 @@
     /* --- Tab Bar --- */
     .tabs {
       display: flex;
+      overflow-x: auto;
       gap: 0;
       background: var(--surface);
       border-bottom: 1px solid var(--border);
@@ -194,6 +195,31 @@
     .msg-text { color: var(--text); word-break: break-word; flex: 1; }
 
     /* --- Plan --- */
+    .activity-fields { display: grid; gap: 12px; margin: 16px 0 0; }
+    .activity-fields dt { color: var(--text-dim); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 4px; }
+    .activity-fields dd { margin: 0; font-size: 13px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .activity-warning { border-left: 3px solid var(--yellow); padding: 10px; background: var(--surface2); margin-top: 12px; }
+    .feed-toolbar { display:flex; gap:12px; flex-wrap:wrap; align-items:end; padding:16px; background:var(--surface); border:1px solid var(--border); border-radius:8px; margin-bottom:16px; }
+    .feed-toolbar label { display:grid; gap:6px; color:var(--text-dim); font-size:12px; }
+    .feed-toolbar input, .feed-toolbar select, .activity-link { background:var(--surface2); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:10px; min-height:44px; }
+    .feed-toolbar input[type=checkbox] { min-height:20px; width:20px; }
+    .activity-link { cursor:pointer; margin-top:12px; }
+    .activity-link:focus-visible, .feed-toolbar :focus-visible, .timeline-entry summary:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+    .feed-caption { color:var(--text-dim); font-size:12px; margin:12px 0; }
+    .timeline-entry { margin:0 0 12px 12px; padding:16px 20px; border:1px solid var(--border); border-left:3px solid var(--accent); border-radius:0 8px 8px 0; background:var(--surface); }
+    .timeline-heading { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-bottom:10px; }
+    .timeline-heading time { margin-left:auto; color:var(--text-dim); font:12px monospace; }
+    .timeline-body { white-space:pre-wrap; overflow-wrap:anywhere; font-size:13px; line-height:1.7; }
+    .timeline-entry summary { cursor:pointer; padding:8px 0; color:var(--accent); }
+    .tab { flex-shrink:0; min-height:44px; background:transparent; border-top:0; border-left:0; border-right:0; }
+    .tab:focus-visible { outline:2px solid var(--accent); outline-offset:-3px; }
+    .header, .header-left, .header-right { flex-wrap:wrap; min-width:0; }
+    .header-session { overflow-wrap:anywhere; min-width:0; }
+    .main, [id^=panel-] { min-width:0; }
+    .feed-toolbar input, .feed-toolbar select { max-width:100%; min-width:0; }
+    @media(prefers-reduced-motion:reduce) { *, *::before, *::after { transition:none !important; } }
+    @media(max-width:600px) { .feed-toolbar label { flex:1 1 100%; } .timeline-entry { margin-left:0; padding:14px; } .agents-grid { grid-template-columns:minmax(0,1fr); } }
+
     .plan-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
     .plan-title { font-weight: 600; font-size: 16px; }
     .progress-bar {
@@ -212,6 +238,16 @@
       background: var(--surface2); padding: 1px 8px; border-radius: 8px; }
 
     /* --- Stats --- */
+    .usage-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 12px; }
+    .usage-agent { padding: 16px; min-width: 0; }
+    .usage-agent h3 { margin: 0 0 6px; overflow-wrap: anywhere; }
+    .usage-counters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 12px 0; }
+    .usage-counters dt, .usage-note { color: var(--text-dim); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+    .usage-counters dd { margin: 4px 0 0; font-size: 16px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+    .usage-limit { margin-top: 12px; font-size: 13px; }
+    .usage-limit progress { display: block; width: 100%; height: 8px; margin: 6px 0; accent-color: var(--cyan); }
+    .usage-limit.low progress { accent-color: var(--yellow); }
+    .usage-limit.expired progress { accent-color: var(--text-muted); }
     .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px; }
     .stat-card {
       background: var(--surface);
@@ -304,7 +340,24 @@
       .header { flex-wrap: wrap; }
       .msg-from { min-width: 60px; }
     }
+
+    .conversation-room { display:grid; grid-template-columns:190px minmax(0,1fr) 280px; gap:22px; align-items:start; }
+    .conversation-room > * { min-width:0; }
+    .conversation-room h1 { font-size:24px; margin:0 0 8px; } .conversation-room h2 { font-size:16px; margin:0 0 12px; }
+    .conversation-room button, #session-name, .picker-item { font:inherit; color:var(--text); background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:10px; cursor:pointer; min-height:44px; }
+    .conversation-room :focus-visible, #session-name:focus-visible, .picker :focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+    .conversation-nav button { width:100%; text-align:left; margin-bottom:8px; overflow-wrap:anywhere; }
+    .conversation-nav [aria-current=true] { border-color:var(--accent); background:linear-gradient(100deg,#16364e,var(--surface)); }
+    .conversation-center .msg-feed { height:52vh; overflow:auto; scrollbar-gutter:stable; overflow-anchor:none; }
+    #message-events { height:auto; max-height:240px; margin-top:14px; } #message-system { margin-top:18px; }
+    .conversation-details { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:16px; max-height:80vh; overflow:auto; }
+    .conversation-agent { border-bottom:1px solid var(--border); padding:12px 0; font-size:12px; overflow-wrap:anywhere; }
+    .conversation-agent h3 { font-size:14px; margin:0 0 8px; } .conversation-agent p { margin:8px 0; line-height:1.6; }
+    .conversation-agent summary { cursor:pointer; color:var(--accent); min-height:32px; } .picker-item { width:100%; text-align:left; }
+    @media(max-width:1100px) { .conversation-room { grid-template-columns:160px minmax(0,1fr); } .conversation-details { grid-column:1 / -1; max-height:none; } #conversation-agents { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:16px; } }
+    @media(max-width:650px) { .conversation-room { grid-template-columns:minmax(0,1fr); } #conversation-sessions { display:flex; gap:8px; overflow:auto; } #conversation-sessions button { min-width:160px; width:auto; } .conversation-center .msg-feed { height:50vh; } .conversation-nav h2 { display:none; } }
   </style>
+  <link rel="stylesheet" href="./app.css">
 </head>
 <body>
   <div class="app">
@@ -313,7 +366,7 @@
       <div class="header-left">
         <span class="conn-dot" id="conn-dot"></span>
         <span class="header-title">multiagents</span>
-        <span class="header-session" id="session-name" title="Click to switch sessions">connecting... &#9662;</span>
+        <button type="button" class="header-session" id="session-name" title="Chọn phiên làm việc">Đang kết nối… &#9662;</button>
       </div>
       <div class="header-right">
         <span id="session-status-badge" class="badge" style="display:none"></span>
@@ -325,29 +378,31 @@
 
     <!-- Tabs -->
     <div class="tabs" id="tab-bar">
-      <div class="tab active" data-tab="agents">Agents <span class="tab-badge" id="badge-agents">0</span></div>
-      <div class="tab" data-tab="messages">Messages <span class="tab-badge" id="badge-messages">0</span></div>
-      <div class="tab" data-tab="plan">Plan <span class="tab-badge" id="badge-plan">-</span></div>
-      <div class="tab" data-tab="knowledge">Knowledge <span class="tab-badge" id="badge-knowledge">0</span></div>
-      <div class="tab" data-tab="files">Files <span class="tab-badge" id="badge-files">0</span></div>
-      <div class="tab" data-tab="stats">Stats <span class="tab-badge" id="badge-stats"></span></div>
+      <button type="button" class="tab" data-tab="agents">Agents <span class="tab-badge" id="badge-agents">0</span></button>
+      <button type="button" class="tab active" data-tab="messages">Hội thoại <span class="tab-badge" id="badge-messages">0</span></button>
+      <button type="button" class="tab" data-tab="plan">Plan <span class="tab-badge" id="badge-plan">-</span></button>
+      <button type="button" class="tab" data-tab="knowledge">Knowledge <span class="tab-badge" id="badge-knowledge">0</span></button>
+      <button type="button" class="tab" data-tab="files">Files <span class="tab-badge" id="badge-files">0</span></button>
+      <button type="button" class="tab" data-tab="stats">Stats <span class="tab-badge" id="badge-stats"></span></button>
+      <button class="tab studio-tab" type="button" data-tab="studio" aria-controls="panel-studio">Studio <span class="tab-badge" id="badge-studio">new</span></button>
     </div>
 
     <!-- Tab panels -->
     <div class="main" id="main">
-      <div id="panel-agents"></div>
-      <div id="panel-messages" class="hidden"></div>
+      <div id="panel-agents" class="hidden"></div>
+      <div id="panel-messages"><p role="status">Đang chờ dữ liệu hội thoại…</p></div>
       <div id="panel-plan" class="hidden"></div>
       <div id="panel-knowledge" class="hidden"></div>
       <div id="panel-files" class="hidden"></div>
       <div id="panel-stats" class="hidden"></div>
+      <div id="panel-studio" class="hidden" aria-labelledby="studio-title"></div>
     </div>
   </div>
 
   <!-- Session Picker Overlay -->
-  <div class="picker-overlay" id="picker-overlay">
+  <div class="picker-overlay" id="picker-overlay" role="dialog" aria-modal="true" aria-label="Chọn phiên làm việc">
     <div class="picker">
-      <input class="picker-search" id="picker-search" type="text" placeholder="Search sessions..." autocomplete="off" />
+      <input class="picker-search" id="picker-search" type="text" aria-label="Tìm phiên làm việc" placeholder="Tìm phiên…" autocomplete="off" />
       <div class="picker-list" id="picker-list"></div>
     </div>
   </div>
@@ -358,10 +413,13 @@
     // =========================================================================
 
     let state = null;
-    let activeTab = "agents";
+    let activeTab = "messages";
     let ws = null;
     let wsAttempt = 0;
     let autoScroll = true;
+    let messageAgent = "";
+    let messageQuery = "";
+
 
     // --- WebSocket ---
 
@@ -371,7 +429,7 @@
 
       ws.onopen = () => {
         wsAttempt = 0;
-        document.getElementById("ws-status").textContent = "live";
+        document.getElementById("ws-status").textContent = "Đã kết nối";
         document.getElementById("ws-status").style.color = "#3fb950";
       };
 
@@ -386,7 +444,7 @@
       };
 
       ws.onclose = () => {
-        document.getElementById("ws-status").textContent = "reconnecting...";
+        document.getElementById("ws-status").textContent = "Mất kết nối, đang thử lại…";
         document.getElementById("ws-status").style.color = "#d29922";
         const delay = Math.min(500 * Math.pow(2, wsAttempt) + Math.random() * 1000, 30000);
         wsAttempt++;
@@ -395,8 +453,7 @@
 
       ws.onerror = () => ws.close();
 
-      // Keepalive ping
-      setInterval(() => { if (ws?.readyState === 1) ws.send("ping"); }, 30000);
+
     }
 
     // --- Tab switching ---
@@ -412,6 +469,7 @@
 
     // Keyboard shortcuts
     document.addEventListener("keydown", (e) => {
+      if (e.target.closest("input,select,textarea,[contenteditable=true]")) return;
       const tabs = ["agents", "messages", "plan", "knowledge", "files", "stats"];
       const num = parseInt(e.key);
       if (num >= 1 && num <= tabs.length) {
@@ -452,7 +510,7 @@
       if (!allDisconnected) return false;
       // Terminal: all agents finished their work (approved/released/done_pending_review with no active reviewers)
       const allDone = state.slots.every(s =>
-        s.task_state === "approved" || s.task_state === "released" || s.task_state === "done_pending_review"
+        s.task_state === "approved" || s.task_state === "released"
       );
       return allDone;
     }
@@ -467,6 +525,8 @@
       // Dot color: green=active, yellow=paused, dim=completed/archived, red=broker down
       if (!state.brokerAlive) {
         dot.className = "conn-dot dead";
+        dot.style.background = "";
+        dot.style.boxShadow = "";
       } else if (isArchived || complete) {
         dot.className = "conn-dot";
         dot.style.background = "var(--text-muted)";
@@ -482,20 +542,20 @@
       }
 
       const name = document.getElementById("session-name");
-      name.textContent = (state.session?.name ?? state.sessionId ?? "no session") + " \u25BE";
+      name.textContent = (state.session?.name ?? state.sessionId ?? "Chưa chọn phiên") + " \u25BE";
 
       // Status badge
       const statusBadge = document.getElementById("session-status-badge");
       if (isArchived) {
-        statusBadge.textContent = "archived";
+        statusBadge.textContent = "Đã lưu trữ";
         statusBadge.className = "badge badge-released";
         statusBadge.style.display = "";
       } else if (isPaused) {
-        statusBadge.textContent = "paused";
+        statusBadge.textContent = "Tạm dừng";
         statusBadge.className = "badge badge-review";
         statusBadge.style.display = "";
       } else if (complete) {
-        statusBadge.textContent = "completed";
+        statusBadge.textContent = "Đã ghi phê duyệt / giải phóng, chưa xác minh bàn giao";
         statusBadge.className = "badge badge-approved";
         statusBadge.style.display = "";
       } else {
@@ -503,7 +563,7 @@
       }
 
       const connected = state.slots.filter(s => s.status === "connected").length;
-      document.getElementById("agent-count").textContent = `${connected}/${state.slots.length} agents`;
+      document.getElementById("agent-count").textContent = `${connected}/${state.slots.length} worker kết nối`;
 
       // Timer: show final duration for completed/archived sessions, live for active
       if (state.session?.created_at) {
@@ -531,7 +591,7 @@
         else if (m > 0) timeStr = `${m}m ${s}s`;
         else timeStr = `${s}s`;
         document.getElementById("uptime").textContent = timeStr;
-      }
+      } else document.getElementById("uptime").textContent = "";
     }
 
     function renderBadges() {
@@ -565,7 +625,7 @@
         approved: "approved",
         released: "released",
       };
-      return `<span class="badge ${map[taskState] ?? "badge-idle"}">${label[taskState] ?? taskState}</span>`;
+      return `<span class="badge ${map[taskState] ?? "badge-idle"}">${esc(label[taskState] ?? taskState)}</span>`;
     }
 
     function connBadge(status) {
@@ -584,12 +644,18 @@
       const peerMap = new Map(state.peers.map(p => [p.id, p]));
       const html = state.slots.map(slot => {
         const peer = slot.peer_id ? peerMap.get(slot.peer_id) : null;
+        let snapshot = {};
+        try { snapshot = JSON.parse(slot.context_snapshot || "{}"); } catch {}
+        const assigned = (state.plan?.items || []).filter(i => i.assigned_to_slot === slot.id && i.status !== "done");
+        const owned = state.fileOwnership.filter(f => f.slot_id === slot.id);
+        const locked = state.fileLocks.filter(f => f.held_by_slot === slot.id);
+        const updated = snapshot.updated_at || slot.last_connected;
+        const stale = slot.status === "connected" && updated && Date.now() - updated > 60000;
+        const reported = state.messages.filter(m => m.from_slot_id === slot.id).sort((a,b) => new Date(b.sent_at) - new Date(a.sent_at))[0];
         const summary = peer?.summary ?? (slot.context_snapshot ? (() => {
           try { return JSON.parse(slot.context_snapshot)?.last_summary; } catch { return null; }
         })() : null);
-        const tokens = (slot.input_tokens || slot.output_tokens)
-          ? `<div style="font-size:11px;color:var(--text-muted);margin-top:4px">${fmtTokens(slot.input_tokens ?? 0)} in / ${fmtTokens(slot.output_tokens ?? 0)} out</div>`
-          : "";
+        const tokens = renderUsage(slot);
         return `<div class="agent-card">
           <div class="agent-top">
             <span class="agent-name">${esc(slot.display_name ?? `Slot ${slot.id}`)}</span>
@@ -597,45 +663,139 @@
           </div>
           <div class="agent-role">${esc(slot.role ?? slot.agent_type ?? "")}</div>
           <div class="flex gap-2 items-center">
-            ${taskBadge(slot.task_state ?? "idle")}
+            <span>Workflow:</span> ${taskBadge(slot.task_state ?? "idle")}
             <span style="font-size:11px;color:var(--text-muted)">${slot.agent_type}</span>
           </div>
           ${tokens}
-          ${summary ? `<div class="agent-summary">${esc(truncate(summary, 200))}</div>` : ""}
+          <dl class="activity-fields">
+            <div><dt>Assigned task / active plan</dt><dd>${esc(snapshot.current_task || assigned.map(i => i.label).join("\n") || "No active plan item assigned")}</dd></div>
+            <div><dt>Latest observed step</dt><dd>${esc(snapshot.last_summary || summary || "No activity reported")}</dd></div>
+            <div><dt>Files (locks / ownership, not proof of edits)</dt><dd>${esc([...locked.map(f => f.file_path), ...owned.map(f => f.path_pattern)].filter(Boolean).join("\n") || "No file activity reported")}</dd></div>
+            <div><dt>Last activity</dt><dd>${updated ? esc(new Date(updated).toLocaleString()) : "Not recorded"}${slot.status !== "connected" ? " - worker offline" : ""}</dd></div>
+            <div><dt>Test results</dt><dd>Not independently verified. See agent reports in Messages.</dd></div>
+            <div><dt>Blockers</dt><dd>${esc(snapshot.blocker || (assigned.some(i => i.status === "blocked") ? "An assigned plan item is blocked. See Messages for details." : "No explicit blocker recorded; this does not confirm successful execution."))}</dd></div>
+            <div><dt>Review</dt><dd>${slot.task_state === "approved" ? "Recorded approval - not independent proof of delivery" : slot.task_state === "done_pending_review" ? "Awaiting reviewer" : "No approval for current work"}</dd></div>
+          </dl>
+          ${stale ? '<div class="activity-warning">Needs inspection: no recent activity. Completion is not confirmed.</div>' : ""}
+          <details class="agent-summary"><summary>Latest agent report</summary>${esc(reported?.text || "No report received")}</details>
+          <button class="activity-link" data-agent-messages="${Number(slot.id)}">View messages</button>
         </div>`;
       }).join("");
       el.innerHTML = `<div class="agents-grid">${html}</div>`;
     }
 
+    document.getElementById("panel-agents").addEventListener("click", e => {
+      const button = e.target.closest("[data-agent-messages]");
+      if (!button) return;
+      messageAgent = button.dataset.agentMessages;
+      document.querySelector('[data-tab="messages"]').click();
+      renderMessages(true);
+    });
+
     // --- Messages panel ---
 
-    function renderMessages() {
-      const el = document.getElementById("panel-messages");
-      if (!state.messages.length) {
-        el.innerHTML = '<div class="empty"><div class="empty-icon">~</div>No messages yet</div>';
-        return;
+    function patchTimeline(feed, messages, slotMap) {
+      const keep = new Set(messages.map(m => String(m.id)));
+      for (const row of [...feed.children]) if (!keep.has(row.dataset.messageId)) row.remove();
+      const rows = new Map([...feed.children].map(row => [row.dataset.messageId, row]));
+      for (const [index, m] of messages.entries()) {
+        const key = String(m.id);
+        const fromSlot = slotMap.get(m.from_slot_id);
+        const from = fromSlot?.display_name || m.from_id || "Không có ID người gửi";
+        const to = slotMap.get(m.to_slot_id)?.display_name || m.to_id || "Nhóm";
+        const version = JSON.stringify([m, from, to]);
+        let row = rows.get(key);
+        if (!row) { row = document.createElement("article"); row.className = "timeline-entry"; row.dataset.messageId = key; }
+        // Filtering can retain a later row; restore order without rebuilding its content.
+        if (feed.children[index] !== row) feed.insertBefore(row, feed.children[index] || null);
+        if (row?.dataset.version === version) continue;
+        const open = row.querySelector("details")?.open;
+        const heading = document.createElement("header"); heading.className = "timeline-heading";
+        const sender = document.createElement("strong"); sender.textContent = from;
+        const route = document.createElement("span"); route.textContent = (fromSlot ? "AI · " : "") + "gửi " + to;
+        const type = document.createElement("span"); type.className = "badge badge-idle"; type.textContent = m.msg_type;
+        const time = document.createElement("time"); const date = new Date(m.sent_at);
+        time.textContent = Number.isNaN(date.getTime()) ? "Chưa có thời điểm" : date.toLocaleString("vi-VN");
+        heading.append(sender, route, type, time);
+        const body = document.createElement("div"); body.className = "timeline-body"; body.textContent = m.text || "";
+        row.replaceChildren(heading);
+        if ((m.text || "").length > 600) {
+          const details = document.createElement("details"); details.dataset.messageId = key; details.open = Boolean(open);
+          const summary = document.createElement("summary"); summary.textContent = m.text.slice(0,160) + " … Đọc đầy đủ";
+          details.append(summary, body); row.append(details);
+        } else row.append(body);
+        row.dataset.version = version;
       }
-      const slotMap = new Map(state.slots.map(s => [s.id, s]));
-      const msgs = state.messages.slice().reverse(); // newest first in data, show oldest first
-      const html = msgs.map(m => {
-        const fromSlot = m.from_slot_id != null ? slotMap.get(m.from_slot_id) : null;
-        const fromName = fromSlot?.display_name ?? m.from_id ?? "?";
-        const time = fmtTime(m.sent_at);
-        const typeClass = `msg-type-${m.msg_type}`;
-        const text = (m.text ?? "").replace(/\n/g, " ").slice(0, 300);
-        return `<div class="msg-item">
-          <span class="msg-time">${time}</span>
-          <span class="msg-from">${esc(fromName)}</span>
-          <span class="msg-type ${typeClass}">${m.msg_type}</span>
-          <span class="msg-text">${esc(text)}</span>
-        </div>`;
-      }).join("");
-      el.innerHTML = `<div class="card"><div class="msg-feed">${html}</div></div>`;
+      if (!messages.length && !feed.children.length) { const empty = document.createElement("p"); empty.className = "empty"; empty.textContent = "Chưa có bản ghi phù hợp."; feed.append(empty); }
+    }
 
-      // Auto-scroll to bottom
-      if (autoScroll) {
-        const feed = el.querySelector(".msg-feed");
-        if (feed) feed.scrollTop = feed.scrollHeight;
+    function renderMessages(force = false) {
+      const el = document.getElementById("panel-messages");
+      const changedSession = el.dataset.session !== (state.sessionId || "");
+      if (!el.querySelector(".feed-toolbar")) {
+        el.innerHTML = '<div class="conversation-room"><nav class="conversation-nav" aria-label="Phiên làm việc"><h2>Phiên làm việc</h2><button type="button" id="conversation-switch">Tìm / đổi phiên</button><div id="conversation-sessions"></div></nav><section class="conversation-center" aria-labelledby="conversation-heading"><h1 id="conversation-heading">Hội thoại của nhóm</h1><p class="feed-caption">Tin nhắn thật của worker AI và người điều hành. Chỉ xem; dùng @multiagents trong VS Code Chat để điều phối và xác nhận điều khiển.</p><div class="feed-toolbar"><label>Worker<select id="message-agent"><option value="">Tất cả worker</option></select></label><label>Tìm nội dung<input id="message-query" type="search" placeholder="Nhiệm vụ, file, kiểm thử hoặc vướng mắc"></label><label><input id="message-live" type="checkbox" checked>Theo tin mới</label></div><p id="conversation-error" role="alert"></p><p class="feed-caption" id="message-count" role="status"></p><div class="msg-feed" id="message-timeline" role="region" tabindex="0" aria-label="Lịch sử hội thoại"></div><button id="message-latest" type="button" hidden>Đến tin mới nhất</button><details id="message-system"><summary>Sự kiện hệ thống / điều khiển</summary><div class="msg-feed" id="message-events"></div></details></section><aside class="conversation-details" aria-label="Worker, nhiệm vụ và mức sử dụng"><h2>Nhóm đang làm gì</h2><div id="conversation-agents"></div></aside></div>';
+        el.querySelector("#message-agent").onchange = e => { messageAgent=e.target.value; renderMessages(true); };
+        el.querySelector("#message-query").oninput = e => { messageQuery=e.target.value; renderMessages(true); };
+        el.querySelector("#message-live").onchange = e => { autoScroll=e.target.checked; renderMessages(true); };
+        el.querySelector("#message-latest").onclick = () => { autoScroll=true; el.querySelector("#message-live").checked=true; renderMessages(true); const feed=el.querySelector("#message-timeline"); feed.scrollTop=feed.scrollHeight; };
+        el.querySelector("#conversation-switch").onclick = openPicker;
+        el.querySelector("#message-timeline").addEventListener("scroll", e => {
+          const feed = e.currentTarget;
+          if (feed.scrollHeight - feed.scrollTop - feed.clientHeight > 60) { autoScroll=false; el.querySelector("#message-live").checked=false; }
+        });
+        fetchSessions();
+      }
+      if (changedSession) {
+        messageAgent=""; messageQuery=""; autoScroll=true; force=true;
+        el.querySelector("#message-query").value=""; el.querySelector("#message-live").checked=true;
+        el.querySelector("#message-timeline").replaceChildren(); el.querySelector("#message-events").replaceChildren();
+        el.dataset.session=state.sessionId || "";
+      }
+      const nav = el.querySelector("#conversation-sessions");
+      const navKey = JSON.stringify([allSessions, state.sessionId]);
+      if (nav.dataset.version !== navKey) {
+        nav.replaceChildren(...allSessions.slice(0,50).map(session => {
+          const button=document.createElement("button"); button.type="button"; button.textContent=(session.name || session.id) + " · " + session.status;
+          button.setAttribute("aria-current", String(session.id===state.sessionId)); button.onclick=()=>selectSession(session.id); return button;
+        }));
+        nav.dataset.version=navKey;
+      }
+      const slotMap = new Map(state.slots.map(slot => [slot.id,slot]));
+      const select = el.querySelector("#message-agent");
+      const optionKey=JSON.stringify(state.slots.map(slot=>[slot.id,slot.display_name]));
+      if (select.dataset.version !== optionKey) {
+        const all=document.createElement("option"); all.value=""; all.textContent="Tất cả worker";
+        select.replaceChildren(all,...state.slots.map(slot=>{const option=document.createElement("option"); option.value=String(slot.id); option.textContent=slot.display_name || "Worker " + slot.id; return option;}));
+        select.dataset.version=optionKey;
+      }
+      select.value=messageAgent;
+      const matches=state.messages.slice(-200).filter(m =>
+        (!messageAgent || m.from_slot_id===Number(messageAgent) || m.to_slot_id===Number(messageAgent)) &&
+        (!messageQuery || [m.text,slotMap.get(m.from_slot_id)?.display_name,m.from_id,slotMap.get(m.to_slot_id)?.display_name,m.to_id].join(" ").toLowerCase().includes(messageQuery.toLowerCase()))
+      ).sort((a,b)=>a.id-b.id);
+      const system=m=>["system","control","team_change"].includes(m.msg_type);
+      const messages=matches.filter(m=>!system(m));
+      const caption=(!state.brokerAlive ? "Broker không kết nối. Dữ liệu có thể cũ. " : "") + messages.length + " tin phù hợp / " + state.messages.length + " bản ghi tải gần nhất (tối đa 200). Báo cáo chưa được xác minh độc lập.";
+      if(el.querySelector("#message-count").textContent!==caption) el.querySelector("#message-count").textContent=caption;
+      const feed=el.querySelector("#message-timeline");
+      const version=JSON.stringify([messages,optionKey]);
+      if (!autoScroll && !force && feed.dataset.rendered) {
+        el.querySelector("#message-latest").hidden=feed.dataset.version===version;
+      } else {
+        const scroll=feed.scrollTop;
+        patchTimeline(feed,messages,slotMap);
+        if(autoScroll) feed.scrollTop=feed.scrollHeight; else feed.scrollTop = scroll;
+        feed.dataset.version=version; feed.dataset.rendered="1";
+        el.querySelector("#message-latest").hidden=true;
+      }
+      patchTimeline(el.querySelector("#message-events"), matches.filter(system), slotMap);
+      const info=el.querySelector("#conversation-agents");
+      const infoKey=JSON.stringify([state.slots,state.plan,Math.floor(Date.now()/60000)]);
+      if(info.dataset.version!==infoKey) {
+        const opened=new Set([...info.querySelectorAll("details[open]")].map(d=>d.dataset.slot));
+        info.innerHTML=state.slots.map(slot=>'<section class="conversation-agent"><h3>' + esc(slot.display_name || 'Worker ' + slot.id) + ' · AI</h3><p>' + esc(slot.status) + ' · ' + esc(slot.task_state) + '</p><p>' + esc((state.plan?.items || []).filter(item=>item.assigned_to_slot===slot.id && item.status!=="done").map(item=>item.label).join("; ") || "Chưa có nhiệm vụ đang làm trong kế hoạch") + '</p><details data-slot="' + Number(slot.id) + '"><summary>Token và hạn mức provider</summary>' + renderUsage(slot) + '</details></section>').join("") || '<p>Phiên chưa có worker.</p>';
+        info.querySelectorAll("details").forEach(d=>d.open=opened.has(d.dataset.slot));
+        info.dataset.version=infoKey;
       }
     }
 
@@ -730,6 +890,42 @@
 
     // --- Stats panel ---
 
+    function usageData(slot) {
+      try { return JSON.parse(slot.agent_usage || "null"); } catch { return null; }
+    }
+    function observedTokens(slot) {
+      return Boolean(usageData(slot)?.tokensObservedAt);
+    }
+    function tokenText(slot, field) {
+      if (!observedTokens(slot) || !Number.isSafeInteger(slot[field]) || slot[field] < 0) return "Chưa được báo cáo";
+      return slot[field].toLocaleString("en-US");
+    }
+    function renderUsage(slot) {
+      const data = usageData(slot);
+      const windows = Object.values(data?.quotas || {}).flatMap(bucket => [bucket.primary, bucket.secondary].filter(Boolean));
+      const quotaHtml = [300, 10080].map(minutes => {
+        const label = minutes === 300 ? "5 giờ" : "Hằng tuần";
+        const matches = windows.filter(w => w.windowMinutes === minutes && Number.isFinite(w.usedPercent) && w.usedPercent >= 0 && w.usedPercent <= 100 && Number.isFinite(w.observedAt));
+        if (!matches.length) return `<div class="usage-limit"><strong>${label}</strong><div class="usage-note">Provider chưa báo cáo</div></div>`;
+        return matches.map((w, i) => {
+          const remaining = Math.round((100 - w.usedPercent) * 10) / 10;
+          const expired = Boolean(w.resetsAt && w.resetsAt <= Date.now());
+          const stale = Date.now() - w.observedAt > 300000 || slot.status !== "connected" || expired;
+          const windowLabel = `${label}${matches.length > 1 ? ` bucket ${i + 1}` : ""}`;
+          return `<div class="usage-limit ${expired ? "expired" : remaining <= 20 ? "low" : ""}">
+            <strong>${windowLabel}: ${remaining}% còn lại${stale ? " (báo cáo gần nhất)" : ""}</strong>
+            <progress max="100" value="${remaining}" aria-label="${esc(windowLabel)} còn lại: ${remaining}%${stale ? ", báo cáo gần nhất" : ""}"></progress>
+            <div class="usage-note">${w.usedPercent}% đã dùng. ${w.resetsAt ? `Đặt lại ${esc(new Date(w.resetsAt).toLocaleString())}${expired ? " - đang chờ cập nhật" : ""}` : "Chưa báo thời điểm đặt lại"}<br>Ghi nhận ${esc(new Date(w.observedAt).toLocaleString())}</div>
+          </div>`;
+        }).join("");
+      }).join("");
+      return `<section aria-label="Token và hạn mức provider">
+        <dl class="usage-counters"><div><dt>Input</dt><dd>${tokenText(slot, "input_tokens")}</dd></div><div><dt>Cached input</dt><dd>${tokenText(slot, "cache_read_tokens")}</dd></div><div><dt>Output</dt><dd>${tokenText(slot, "output_tokens")}</dd></div></dl>
+        <div class="usage-note">${data?.tokensObservedAt ? `Tổng đã ghi nhận; cached đã nằm trong input. Cập nhật ${esc(new Date(data.tokensObservedAt).toLocaleString())}.` : "Chưa nhận báo cáo token được hỗ trợ. Không phải số 0 đo được."}</div>
+        ${quotaHtml}<p class="usage-note">Hạn mức provider/tài khoản có thể dùng chung với worker khác. Đây không phải ngân sách riêng của worker, không suy ra từ số token.</p>
+      </section>`;
+    }
+
     function renderStats() {
       const el = document.getElementById("panel-stats");
 
@@ -737,16 +933,17 @@
       const connected = state.slots.filter(s => s.status === "connected").length;
       const working = state.slots.filter(s => s.task_state === "working").length;
       const approved = state.slots.filter(s => s.task_state === "approved" || s.task_state === "released").length;
-      const totalIn = state.slots.reduce((a, s) => a + (s.input_tokens ?? 0), 0);
-      const totalOut = state.slots.reduce((a, s) => a + (s.output_tokens ?? 0), 0);
+      const measured = state.slots.filter(observedTokens);
+      const total = field => measured.length ? fmtTokens(measured.reduce((a, s) => a + (s[field] ?? 0), 0)) : "Not reported";
 
       const statsCards = [
         { value: connected, label: "Connected Agents", color: "var(--green)" },
         { value: working, label: "Working", color: "var(--blue)" },
         { value: approved, label: "Approved", color: "var(--green)" },
         { value: state.messages.length, label: "Messages", color: "var(--cyan)" },
-        { value: fmtTokens(totalIn), label: "Input Tokens", color: "var(--purple)" },
-        { value: fmtTokens(totalOut), label: "Output Tokens", color: "var(--purple)" },
+        { value: total("input_tokens"), label: "Observed Input Tokens", color: "var(--cyan)" },
+        { value: total("cache_read_tokens"), label: "Observed Cached Input", color: "var(--cyan)" },
+        { value: total("output_tokens"), label: "Observed Output Tokens", color: "var(--cyan)" },
       ];
 
       const cardsHtml = statsCards.map(s =>
@@ -768,7 +965,8 @@
           }).join("")}</div></div>`;
       }
 
-      el.innerHTML = `<div class="stats-grid">${cardsHtml}</div>${guardrailHtml}`;
+      const agentUsage = state.slots.map(slot => `<article class="card usage-agent"><h3>${esc(slot.display_name || `Slot ${slot.id}`)}</h3><div class="usage-note">${esc(slot.model_selection?.provider || slot.agent_type)} / ${esc(slot.model_selection?.model || "default model")}</div>${renderUsage(slot)}</article>`).join("");
+      el.innerHTML = `<div class="stats-grid">${cardsHtml}</div><p class="usage-note">Token coverage: ${measured.length}/${state.slots.length} agents. Totals may be partial; no billing estimate. Input includes cached input.</p><div class="usage-grid">${agentUsage}</div>${guardrailHtml}`;
     }
 
     // --- Helpers ---
@@ -812,12 +1010,16 @@
     }
 
     function closePicker() {
-      document.getElementById("picker-overlay").classList.remove("open");
+      const overlay=document.getElementById("picker-overlay");
+      if (!overlay.classList.contains("open")) return;
+      overlay.classList.remove("open");
+      document.getElementById("session-name").focus();
     }
 
     async function fetchSessions() {
       try {
         const res = await fetch("/api/sessions");
+        if (!res.ok) throw new Error("Không tải được danh sách phiên.");
         allSessions = await res.json();
         // Sort: active first, then paused, then archived; within each group by most recent
         allSessions.sort((a, b) => {
@@ -827,7 +1029,8 @@
           return (b.last_active_at ?? b.created_at ?? 0) - (a.last_active_at ?? a.created_at ?? 0);
         });
         renderPicker();
-      } catch { allSessions = []; renderPicker(); }
+        if(activeTab==="messages" && state) renderMessages();
+      } catch { allSessions = []; document.getElementById("picker-list").textContent="Không tải được phiên. Kiểm tra kết nối rồi thử lại."; }
     }
 
     function renderPicker() {
@@ -839,7 +1042,7 @@
 
       const list = document.getElementById("picker-list");
       if (!pickerFiltered.length) {
-        list.innerHTML = '<div class="picker-empty">No sessions found</div>';
+        list.innerHTML = '<div class="picker-empty">Không tìm thấy phiên</div>';
         return;
       }
 
@@ -848,7 +1051,7 @@
       pickerFiltered.forEach((s, i) => {
         if (s.status !== lastStatus) {
           lastStatus = s.status;
-          const label = s.status === "active" ? "Active" : s.status === "paused" ? "Paused" : "Archived";
+          const label = s.status === "active" ? "Đang hoạt động" : s.status === "paused" ? "Tạm dừng" : "Đã lưu trữ";
           html += `<div class="picker-group">${label}</div>`;
         }
         const isCurrent = state?.sessionId === s.id;
@@ -860,12 +1063,12 @@
           : s.status === "paused"
             ? '<span style="color:var(--yellow)">&#9679;</span>'
             : '<span style="color:var(--text-muted)">&#9679;</span>';
-        html += `<div class="picker-item${focused}${active}" data-idx="${i}" data-id="${esc(s.id)}">
+        html += `<button type="button" class="picker-item${focused}${active}" data-idx="${i}" data-id="${esc(s.id)}">
           ${statusDot}
           <span class="picker-item-name">${esc(s.name || s.id)}</span>
           <span class="picker-item-id">${esc(s.id.length > 24 ? s.id.slice(0, 24) + "..." : s.id)}</span>
           <span class="picker-item-time">${age}</span>
-        </div>`;
+        </button>`;
       });
       list.innerHTML = html;
 
@@ -875,14 +1078,17 @@
     }
 
     async function selectSession(id) {
-      closePicker();
+      const error = document.getElementById("conversation-error");
+      if(error) error.textContent="";
       try {
-        await fetch("/api/session", {
+        const response = await fetch("/api/session", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ session_id: id }),
         });
-      } catch {}
+        if(!response.ok) throw new Error("Không đổi được phiên.");
+        closePicker();
+      } catch { const message="Không đổi được phiên. Hãy thử lại; phiên hiện tại được giữ nguyên."; document.getElementById("picker-list").textContent=message; if(error) error.textContent=message; }
     }
 
     // Click session name to open picker
@@ -915,11 +1121,16 @@
 
     // Global Escape to close picker
     document.addEventListener("keydown", (e) => {
+      const overlay=document.getElementById("picker-overlay");
+      if(!overlay.classList.contains("open")) return;
       if (e.key === "Escape") closePicker();
+      if(e.key==="Tab") { const items=[...overlay.querySelectorAll("input,button")]; const first=items[0],last=items.at(-1); if(e.shiftKey && document.activeElement===first) { e.preventDefault(); last.focus(); } else if(!e.shiftKey && document.activeElement===last) { e.preventDefault(); first.focus(); } }
     });
 
     // --- Boot ---
+    setInterval(() => { if (ws?.readyState === 1) ws.send("ping"); }, 30000);
     connectWs();
   </script>
+  <script src="./app.js"></script>
 </body>
 </html>
