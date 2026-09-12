@@ -57,42 +57,30 @@ reviewed team-library export without secrets.
 credentials. Old sessions are not portable; create a new session on the new
 machine.
 
-### Clean Install On Windows
+### Clean Install On Windows & macOS / Linux
 
-Prerequisites:
+Prerequisites & Automated Setup:
 
-- Windows with a trusted VS Code desktop workspace.
-- Bun `1.1+` on `PATH`.
-- This repository's dependencies installed with Bun.
-- For selected Codex workers: compatible Codex CLI plus the selected provider
-        credential. Copilot sign-in does not replace that provider credential.
+- **Windows**:
+  - Run `setup.bat` once on a fresh machine. It installs Bun, Node.js 20+, pnpm, project dependencies (`pnpm install`), and Agent CLIs (Claude Code, Codex CLI, Gemini CLI).
+  - Launch with `start.bat`.
+  - Update with `update.bat`.
+- **macOS / Linux**:
+  - Run `./setup.sh` once to configure environment and dependencies.
+  - Launch with `./start.sh`.
+  - Update with `./update.sh`.
 
-From the new checkout:
+```bash
+# Windows
+.\setup.bat   # Initial setup
+.\start.bat   # Launch broker & web dashboard
+.\update.bat  # Pull code & update dependencies/CLIs
 
-```powershell
-Set-Location 'C:\path\to\multiagents'
-bun --version
-bun install --ignore-scripts
-.\setup-copilot.bat --check --no-pause
-.\setup-copilot.bat --no-pause
+# macOS / Linux
+./setup.sh    # Initial setup
+./start.sh    # Launch broker & web dashboard
+./update.sh   # Pull code & update dependencies/CLIs
 ```
-
-Then open this checkout in VS Code, review workspace/server trust, run **MCP:
-List Servers**, and start `multiagents-orch`. In Copilot **Agent**, enable its
-tools and call `list_models` only. This validates local MCP discovery without
-creating workers or contacting providers. Enter provider keys only through the
-masked VS Code inputs; never put them in README, chat, source, or Git.
-
-The setup script writes/merges workspace `.vscode/mcp.json` using new absolute
-paths. It does not install VS Code, Bun, provider CLIs, credentials, or teams.
-It does not modify global settings. For Agent Host, use
-`.\setup-copilot.bat --credentials env` and provide credentials in the
-launching process environment; interactive `${input:...}` values are not
-forwarded to Agent Host. See [Copilot setup](docs/copilot-setup.md).
-
-For macOS/Linux, install Bun and run the equivalent TypeScript setup commands;
-`setup-copilot.bat` is Windows-only. Configure the host's supported MCP file
-manually, using paths from the current machine. See [installation notes](readme-install.md).
 
 ### First Team Run
 
@@ -100,9 +88,9 @@ Before `create_team`, confirm the absolute target project directory, task,
 worker roster, provider/model IDs from `list_models`, and expected cost. Use the
 target project, not this repository, unless intentionally developing
 multiagents itself. A new machine normally has no old sessions; this is
-expected. `start-dashboard.bat` installs missing local prerequisites, starts or
+expected. `start.bat` (or `./start.sh` on macOS/Linux) starts or
 reuses the broker and web dashboard, then opens the browser. It does not
-configure MCP or create a team. Run `start-dashboard.bat --check` for a
+configure MCP or create a team. Run `start.bat --check` for a
 nonmutating prerequisite check.
 
 ### VS Code Copilot on Windows (This Checkout)
@@ -113,7 +101,7 @@ nonmutating prerequisite check.
 
 Interactive `${input:...}` servers are **not forwarded to Agent Host**. Use extension-host mode, or rerun `setup-copilot.bat --credentials env` and supply real credentials separately in the launching host's environment. Setup does not toggle global settings, trust, or sampling. See the [Copilot setup guide](docs/copilot-setup.md) for checks, host limitations, and the optional `/multiagents` prompt.
 
-MCP adds tools, not a model-intelligence upgrade: normal Copilot Agent already has tools. Multiagents adds separate worker models/contexts, durable coordination (locks, knowledge, status, recovery), and observability. Teams add setup, latency, and provider cost; ordinary Copilot is simpler for small tasks. `start-dashboard.bat` can install missing Bun, dependencies, Node.js, Claude Code, Codex CLI, and Gemini CLI before starting the broker/dashboard. Review those network and global-install side effects first; use `--check` to inspect without installing or launching. The script does not configure MCP or create a team.
+MCP adds tools, not a model-intelligence upgrade: normal Copilot Agent already has tools. Multiagents adds separate worker models/contexts, durable coordination (locks, knowledge, status, recovery), and observability. Teams add setup, latency, and provider cost; ordinary Copilot is simpler for small tasks. `setup.bat` installs missing Bun, dependencies, Node.js, Claude Code, Codex CLI, and Gemini CLI. Use `start.bat --check` to inspect without launching. The script does not configure MCP or create a team.
 
 ### CLI Setup
 
