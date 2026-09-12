@@ -11,6 +11,7 @@ import type { AgentUsageUpdate } from "../shared/agent-usage.ts";
 import { validateUsageUpdate } from "../shared/agent-usage.ts";
 import type { BrokerClient } from "../shared/broker-client.ts";
 import type { CodexDriver, CodexNotification } from "./codex-driver.ts";
+import type { BaseAgentDriver, DriverNotification } from "../shared/agent-driver.ts";
 import { log } from "../shared/utils.ts";
 
 const LOG_PREFIX = "monitor";
@@ -446,6 +447,40 @@ export function monitorCodexDriver(
     }
     void handleCodexNotification(notification, slotId, sessionId, brokerClient, onEvent);
   });
+}
+
+/** Attach lifecycle and token monitoring to any persistent engine driver. */
+export function monitorAgentDriver(
+  driver: BaseAgentDriver,
+  slotId: number,
+  sessionId: string,
+  brokerClient: BrokerClient,
+  onEvent: (event: AgentEvent) => void,
+): void {
+  driver.onNotification((notification) => {
+    const usage = driverUsageUpdate(notification);
+    if (usage) void updateTokenUsage(slotId, usage, brokerClient);
+    if (notification.method === "turn/started") void autoTransitionToWorking(slotId, brokerClient);
+    if (notification.method === "turn/completed") {
+      onEvent({ type: "agent_output", severity: "info", slotId, sessionId, message: `${driver.kind} turn completed in slot ${slotId}`, data: usage ? { usage } : undefined });
+    }
+  });
+  driver.onExit(() => void handleExit(1, slotId, sessionId, brokerClient, onEvent));
+}
+
+/** Normalize native engine token counters without assuming a Codex payload. */
+export function driverUsageUpdate(notification: DriverNotification): { input: number; output: number; cacheRead: number } | null {
+  const value = (notification.params.usage ?? notification.params) as Record<string, unknown>;
+  const number = (snake: string, camel: string) => {
+    const raw = value[snake] ?? value[camel];
+    return typeof raw === "number" && Number.isFinite(raw) && raw >= 0 ? raw : 0;
+  };
+  const usage = {
+    input: number("input_tokens", "inputTokens"),
+    output: number("output_tokens", "outputTokens"),
+    cacheRead: number("cached_input_tokens", "cachedInputTokens"),
+  };
+  return usage.input || usage.output || usage.cacheRead ? usage : null;
 }
 
 /** Codex 0.153.4 app-server schema: total is cumulative; cached input is a subset of input. */

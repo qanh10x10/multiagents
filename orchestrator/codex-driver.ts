@@ -23,6 +23,14 @@
 import type { Subprocess } from "bun";
 import { log } from "../shared/utils.ts";
 import { codexCommand } from "../shared/codex-executable.ts";
+import type {
+  BaseAgentDriver,
+  DriverNotification,
+  DriverNotificationListener,
+  DriverSessionOptions,
+  DriverTurnResult,
+  DriverUsage,
+} from "../shared/agent-driver.ts";
 
 export interface CodexRuntimeConfig {
   configArgs?: string[];
@@ -39,32 +47,17 @@ type PipedSubprocess = Subprocess<"pipe", "pipe", "pipe">;
 const LOG_PREFIX = "codex-driver";
 
 /** Result from a Codex turn. */
-export interface CodexTurnResult {
-  threadId: string;
-  content: string;
-  usage?: { input_tokens?: number; output_tokens?: number; cached_input_tokens?: number };
-}
+/** Backward-compatible aliases for the shared driver contract. */
+export type CodexTurnResult = DriverTurnResult;
 
 /** Notification event from the app-server. */
-export interface CodexNotification {
-  method: string;
-  threadId?: string;
-  turnId?: string;
-  params: Record<string, unknown>;
-}
+export type CodexNotification = DriverNotification;
 
 /** Callback type for notification listeners. */
-export type NotificationListener = (notification: CodexNotification) => void;
+export type NotificationListener = DriverNotificationListener;
 
 /** Options for starting a new Codex session. */
-export interface CodexSessionOptions {
-  prompt: string;
-  cwd?: string;
-  sandbox?: "read-only" | "workspace-write" | "danger-full-access";
-  baseInstructions?: string;
-  developerInstructions?: string;
-  model?: string;
-}
+export type CodexSessionOptions = DriverSessionOptions;
 
 /** Convert a simplified sandbox string to the Codex app-server's serde enum object.
  *  The app-server uses camelCase variant names: workspaceWrite, readOnly, etc. */
@@ -98,7 +91,8 @@ function sandboxPolicyObject(sandbox: string, cwd?: string): Record<string, unkn
  *   4. driver.steer(threadId, text) — injects content mid-turn
  *   5. driver.kill() — graceful shutdown
  */
-export class CodexDriver {
+export class CodexDriver implements BaseAgentDriver {
+  readonly kind = "codex" as const;
   private proc: PipedSubprocess;
   private nextId = 1;
   private pendingRequests = new Map<number, {

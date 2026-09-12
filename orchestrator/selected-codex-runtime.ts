@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { chmodSync, lstatSync, mkdirSync, realpathSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { ResolvedModelSelection } from "../shared/model-providers.ts";
@@ -63,11 +63,36 @@ export function selectedCodexRuntime(
       'features.plugins=false',
       'features.recommended_plugins=false',
       'features.skip_host_skill_discovery=true',
+      'features.multi_agent=false',
+      'features.multi_agent_v2=false',
       'analytics.enabled=false',
       'mcp_servers.multiagents-peer={ command = ' + JSON.stringify(process.execPath)
         + ', args = ' + JSON.stringify(peerArgs) + ', env = { MULTIAGENTS_DRIVER_MODE = "1" }'
         + (allowAll ? ', default_tools_approval_mode = "approve"' : '') + ' }',
     ];
+    try {
+      const hostConfigFile = join(userHome, ".codex", "config.toml");
+      if (existsSync(hostConfigFile)) {
+        const hostToml = readFileSync(hostConfigFile, "utf8");
+        const parsed = Bun.TOML.parse(hostToml) as { mcp_servers?: Record<string, any> };
+        if (parsed?.mcp_servers) {
+          for (const [serverName, srv] of Object.entries(parsed.mcp_servers)) {
+            if (serverName === "multiagents" || serverName === "multiagents-peer") continue;
+            if (srv && typeof srv === "object") {
+              const cmd = srv.command ? `command = ${JSON.stringify(srv.command)}` : "";
+              const args = Array.isArray(srv.args) ? `, args = ${JSON.stringify(srv.args)}` : "";
+              const envPart = srv.env ? `, env = ${JSON.stringify(srv.env)}` : "";
+              const urlPart = srv.url ? `url = ${JSON.stringify(srv.url)}` : "";
+              const base = [cmd, args, envPart, urlPart].filter(Boolean).join("");
+              const approval = allowAll || srv.default_tools_approval_mode === "approve"
+                ? ', default_tools_approval_mode = "approve"'
+                : (srv.default_tools_approval_mode ? `, default_tools_approval_mode = ${JSON.stringify(srv.default_tools_approval_mode)}` : "");
+              config.push(`mcp_servers.${JSON.stringify(serverName)}={ ${base}${approval} }`);
+            }
+          }
+        }
+      }
+    } catch { /* ignore */ }
     // Untrusted project layers are ignored by native Codex. Cover ancestors too,
     // including a parent repository when the selected working directory is nested.
     for (let directory = project;; directory = dirname(directory)) {

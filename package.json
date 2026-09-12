@@ -34,6 +34,7 @@
     "orchestrator": "bun orchestrator/orchestrator-server.ts",
     "setup": "bun cli.ts setup",
     "dashboard": "bun cli.ts dashboard",
+    "web": "bun cli.ts web",
     "test": "bun test",
     "version:patch": "bun run scripts/version.ts patch",
     "version:minor": "bun run scripts/version.ts minor",

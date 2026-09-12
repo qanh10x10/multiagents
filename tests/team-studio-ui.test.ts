@@ -101,6 +101,9 @@ describe("Team Studio UI source contract", () => {
   });
 
   test("keeps credentials ephemeral and separate from metadata", () => {
+    expect(js).toContain('["teams", "agents", "providers", "credentials"]');
+    expect(js).toContain('ui.section === "credentials" ? credentialDetail(currentProvider())');
+    expect(js).toContain("Keys never enter provider metadata, exports, browser storage, or disk.");
     expect(js).toContain('type="password"');
     expect(js).toContain('autocomplete="new-password"');
     expect(js).toContain('input.value = ""');

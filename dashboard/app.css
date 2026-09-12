@@ -219,3 +219,131 @@
 @media (prefers-reduced-motion: reduce) {
   .studio-skeleton { animation: none; }
 }
+
+/* --- Multi-Engine Monitoring & Telemetry (Driver Designer Spec) --- */
+:root {
+  --engine-codex-bg: rgba(88, 166, 255, 0.15);
+  --engine-codex-border: #58a6ff;
+  --engine-codex-text: #79c0ff;
+
+  --engine-claude-bg: rgba(219, 109, 40, 0.15);
+  --engine-claude-border: #db6d28;
+  --engine-claude-text: #ffa657;
+
+  --engine-antigravity-bg: rgba(57, 210, 192, 0.15);
+  --engine-antigravity-border: #39d2c0;
+  --engine-antigravity-text: #56d4c2;
+
+  --latency-fast: #3fb950;
+  --latency-medium: #d29922;
+  --latency-slow: #f85149;
+
+  --steer-bg: rgba(188, 140, 255, 0.12);
+  --steer-border: #bc8cff;
+  --steer-glow: rgba(188, 140, 255, 0.35);
+}
+
+.badge-engine {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border: 1px solid transparent;
+}
+.badge-engine--codex {
+  background: var(--engine-codex-bg);
+  border-color: var(--engine-codex-border);
+  color: var(--engine-codex-text);
+}
+.badge-engine--claude {
+  background: var(--engine-claude-bg);
+  border-color: var(--engine-claude-border);
+  color: var(--engine-claude-text);
+}
+.badge-engine--antigravity,
+.badge-engine--gemini {
+  background: var(--engine-antigravity-bg);
+  border-color: var(--engine-antigravity-border);
+  color: var(--engine-antigravity-text);
+}
+
+.agent-telemetry-strip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 10px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin: 10px 0;
+  font-size: 12px;
+}
+.telemetry-item {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.telemetry-label {
+  color: var(--text-dim);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.telemetry-val {
+  font-family: monospace;
+  font-weight: 600;
+}
+.telemetry-val.latency-fast { color: var(--latency-fast); }
+.telemetry-val.latency-medium { color: var(--latency-medium); }
+.telemetry-val.latency-slow { color: var(--latency-slow); }
+
+.timeline-entry--steer {
+  border-left: 3px solid var(--steer-border) !important;
+  background: linear-gradient(90deg, var(--steer-bg) 0%, var(--surface) 100%) !important;
+}
+.badge-steer {
+  background: var(--steer-bg);
+  border: 1px solid var(--steer-border);
+  color: var(--steer-border);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.steer-route {
+  color: var(--text);
+  font-weight: 600;
+  font-size: 13px;
+}
+.steer-status-tag {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+.steer-status-tag.tag-success {
+  background: rgba(63, 185, 80, 0.18);
+  color: var(--green);
+}
+.steer-status-tag.tag-fallback {
+  background: rgba(210, 153, 34, 0.18);
+  color: var(--yellow);
+}
+.steer-body .steer-quote {
+  font-style: italic;
+  padding: 8px 12px;
+  background: var(--surface2);
+  border-left: 3px solid var(--steer-border);
+  border-radius: 0 6px 6px 0;
+  margin: 8px 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.steer-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: monospace;
+}

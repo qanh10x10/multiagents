@@ -18,8 +18,36 @@ import { codexCommand } from "../shared/codex-executable.ts";
 import { resolveModelSelection } from "../shared/model-providers.ts";
 import { selectedCodexRuntime, validateSelectedEnvironmentKey } from "./selected-codex-runtime.ts";
 import { withEccWorkflow } from "../shared/ecc.ts";
+import type { BaseAgentDriver } from "../shared/agent-driver.ts";
+import { CodexDriver, type CodexRuntimeConfig } from "./codex-driver.ts";
+import { ClaudeDriver, type ClaudeRuntimeConfig } from "./claude-driver.ts";
+import { AntigravityDriver, type AntigravityRuntimeProfile } from "./antigravity-driver.ts";
 
 const LOG_PREFIX = "launcher";
+
+/** Native runtimes are opt-in; Gemini remains disabled without a verified profile. */
+export interface AgentDriverSpawnOptions {
+  codex?: CodexRuntimeConfig;
+  claude?: ClaudeRuntimeConfig;
+  gemini?: AntigravityRuntimeProfile;
+  timeoutMs?: number;
+}
+
+export async function spawnAgentDriver(
+  kind: "codex" | "claude" | "gemini",
+  cwd: string,
+  env: Record<string, string | undefined> = process.env,
+  options: AgentDriverSpawnOptions = {},
+): Promise<BaseAgentDriver> {
+  const timeoutMs = options.timeoutMs ?? 30_000;
+  switch (kind) {
+    case "codex": return CodexDriver.spawn(cwd, env, timeoutMs, options.codex);
+    case "claude": return ClaudeDriver.spawn(cwd, env, timeoutMs, options.claude);
+    case "gemini":
+      if (!options.gemini) throw new Error("Gemini native driver requires a verified runtime profile");
+      return AntigravityDriver.spawn(cwd, env, options.gemini);
+  }
+}
 
 /** Resolved path to cli.ts — used to build MCP server commands. */
 const CLI_PATH = path.resolve(import.meta.dir, "..", "cli.ts");

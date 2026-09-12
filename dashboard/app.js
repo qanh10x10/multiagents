@@ -194,6 +194,15 @@
     return providers().filter(provider => !query || `${provider.name} ${provider.protocol} ${provider.id}`.toLowerCase().includes(query));
   }
 
+  function credentialDetail(provider) {
+    if (!provider) return emptyState("Select a provider", "Choose a provider to add or clear its API key.", "new-provider", "Add provider");
+    const status = ui.data?.readiness?.find(item => item.providerId === provider.id);
+    return `<div class="studio-pane-header"><div><span class="studio-eyebrow">Local secret</span><h2>${escapeHtml(provider.name)}</h2></div></div>
+      <div class="studio-pane-body"><dl class="studio-definition"><dt>Provider</dt><dd>${escapeHtml(provider.id)}</dd><dt>Environment reference</dt><dd>${escapeHtml(provider.envKeyRef ?? "Derived at runtime")}</dd><dt>Status</dt><dd>${status?.credentialPresent ? "Stored in memory" : "Not configured"}</dd></dl>
+      <div class="studio-inline-actions" style="margin-top:14px"><button class="studio-button cyan" data-action="credential">${status?.credentialPresent ? "Replace API key" : "Add API key"}</button>${status?.credentialPresent ? '<button class="studio-button danger" data-action="clear-credential">Clear key</button>' : ""}</div>
+      <p class="studio-field-hint" style="margin-top:14px">Keys never enter provider metadata, exports, browser storage, or disk. Restarting the dashboard clears them.</p></div>`;
+  }
+
   function navigationBody() {
     if (ui.loading && !ui.loaded) return `<div class="studio-loading" aria-busy="true"><div class="studio-skeleton"></div><div class="studio-skeleton"></div><div class="studio-skeleton"></div></div>`;
     if (ui.error && !ui.loaded) return `<div class="studio-empty"><strong>Studio is unavailable</strong><span>${escapeHtml(ui.error)}</span><button class="studio-button" data-action="reload">Try again</button></div>`;
@@ -204,7 +213,7 @@
         <span class="studio-card-meta">${escapeHtml(agent.role)} · ${escapeHtml(agent.runtime)}</span>${statusChip(agent)}</button></li>`).join("");
       return rows ? `<ul class="studio-list">${rows}</ul>` : emptyState("No named agents", "Create an agent definition before composing a team.", "new-agent", "Create agent");
     }
-    if (ui.section === "providers") {
+    if (ui.section === "providers" || ui.section === "credentials") {
       const readiness = new Map((ui.data?.readiness ?? []).map(item => [item.providerId, item]));
       const rows = filteredProviders().map(provider => {
         const status = readiness.get(provider.id);
@@ -308,7 +317,7 @@
     const selectedTeam = currentTeam();
     const count = library().teams.length;
     document.getElementById("badge-studio").textContent = count ? String(count) : "new";
-    const detail = ui.section === "agents" ? agentDetail(currentAgent()) : ui.section === "providers" ? providerDetail(currentProvider()) : teamCanvas(selectedTeam);
+    const detail = ui.section === "agents" ? agentDetail(currentAgent()) : ui.section === "providers" ? providerDetail(currentProvider()) : ui.section === "credentials" ? credentialDetail(currentProvider()) : teamCanvas(selectedTeam);
     const createAction = ui.section === "agents" ? "new-agent" : ui.section === "providers" ? "new-provider" : "new-team";
     const createLabel = ui.section === "agents" ? "New agent" : ui.section === "providers" ? "Add provider" : "New template";
     panel.innerHTML = `<section class="studio-shell" aria-busy="${ui.loading}">
@@ -317,9 +326,9 @@
       <div class="studio-statusbar ${ui.error || ui.noticeType === "error" ? "error" : ui.noticeType === "success" ? "success" : ""}"><span role="status" aria-live="polite">${escapeHtml(ui.error || ui.notice || (ui.data ? `Revision ${ui.data.revision.slice(0, 10)} · secrets stay on this machine` : "Loading Studio configuration..."))}</span><span>${ui.data?.credentialStorage === "memory" ? "Credentials: memory only" : ""}</span></div>
       <div class="studio-workspace">
         <aside class="studio-pane studio-library"><div class="studio-pane-header"><h2>Library</h2><div class="studio-segmented" aria-label="Library section">
-          ${["teams", "agents", "providers"].map(section => `<button type="button" data-section="${section}" aria-pressed="${ui.section === section}">${section[0].toUpperCase() + section.slice(1)}</button>`).join("")}</div></div>
+          ${["teams", "agents", "providers", "credentials"].map(section => `<button type="button" data-section="${section}" aria-pressed="${ui.section === section}">${section[0].toUpperCase() + section.slice(1)}</button>`).join("")}</div></div>
           <div class="studio-pane-body studio-scroll"><label class="studio-field studio-search">Search ${escapeHtml(ui.section)}<input type="search" value="${escapeHtml(ui.search)}" data-action="search" data-focus-key="studio-search"></label>${navigationBody()}</div></aside>
-        <main class="studio-pane studio-topology"><div class="studio-pane-header"><h2>${ui.section === "teams" ? "Topology" : "Details"}</h2>${ui.section === "teams" ? `<div class="studio-segmented" aria-label="Topology view"><button type="button" data-view="graph" aria-pressed="${ui.view === "graph"}">Graph</button><button type="button" data-view="list" aria-pressed="${ui.view === "list"}">List</button></div>` : ""}</div><div class="studio-canvas-wrap">${detail}</div></main>
+        <main class="studio-pane studio-topology"><div class="studio-pane-header"><h2>${ui.section === "teams" ? "Topology" : ui.section === "credentials" ? "Credentials" : "Details"}</h2>${ui.section === "teams" ? `<div class="studio-segmented" aria-label="Topology view"><button type="button" data-view="graph" aria-pressed="${ui.view === "graph"}">Graph</button><button type="button" data-view="list" aria-pressed="${ui.view === "list"}">List</button></div>` : ""}</div><div class="studio-canvas-wrap">${detail}</div></main>
         <aside class="studio-pane studio-inspector"><div class="studio-pane-header"><h2>Readiness</h2></div>${ui.section === "teams" ? teamInspector(selectedTeam) : `<div class="studio-pane-body"><p class="studio-card-meta">${ui.section === "agents" ? "Agent identity is reusable. Model and credential readiness are local to this machine." : "Metadata availability, credentials and connection verification are separate states."}</p></div>`}</aside>
       </div><div id="studio-dialog-root"></div></section>`;
     if (focusKey) panel.querySelector(`[data-focus-key="${CSS.escape(focusKey)}"]`)?.focus();

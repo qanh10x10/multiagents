@@ -8,11 +8,30 @@
 import type { BrokerClient } from "../shared/broker-client.ts";
 import type { AgentEvent } from "./monitor.ts";
 import type { CodexDriver } from "./codex-driver.ts";
+import type { BaseAgentDriver } from "../shared/agent-driver.ts";
 import { FLAP_THRESHOLD, FLAP_WINDOW_MS } from "../shared/constants.ts";
 import { log, safeJsonParse, formatDuration } from "../shared/utils.ts";
 import { relaunchIntoSlot, buildTeamContext, ENRICHED_PATH } from "./launcher.ts";
 
 const LOG_PREFIX = "recovery";
+
+/** Thread IDs are engine-scoped. A cross-engine handoff must start fresh. */
+export async function resumeDriverOrStart(
+  driver: BaseAgentDriver,
+  sourceAgentType: string,
+  threadId: string | undefined,
+  prompt: string,
+) {
+  if (threadId && sourceAgentType === driver.kind) {
+    try {
+      await driver.resumeThread(threadId);
+      return driver.reply(threadId, prompt);
+    } catch {
+      // Provider resume is optional; a fresh handoff preserves isolation.
+    }
+  }
+  return driver.startSession({ prompt });
+}
 
 /** Track crash timestamps per slot for flap detection. */
 const crashHistory: Map<number, number[]> = new Map();
