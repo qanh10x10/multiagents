@@ -18,7 +18,7 @@ import {
   BROKER_HOSTNAME,
   DASHBOARD_REFRESH,
 } from "../shared/constants.ts";
-import type { Session, Slot, Peer, Message, GuardrailState, FileLock, FileOwnership } from "../shared/types.ts";
+import type { Session, Slot, Peer, Message, GuardrailState, FileLock, FileOwnership, SendMessageRequest } from "../shared/types.ts";
 import type { PlanState } from "../shared/broker-client.ts";
 
 // --- Configuration ---
@@ -305,6 +305,47 @@ const server = Bun.serve({
           pause_reason: body.action === "pause" ? "Paused via web dashboard" : undefined,
           paused_at: body.action === "pause" ? Date.now() : undefined,
         });
+        return Response.json(result);
+      } catch (e) {
+        return Response.json({ error: String(e) }, { status: 500 });
+      }
+    }
+
+    // API: send direct message to worker or broadcast
+    if (url.pathname === "/api/message/send" && req.method === "POST") {
+      try {
+        const body = await req.json() as {
+          session_id?: string;
+          to_slot_id?: number | null;
+          to_id?: string;
+          text: string;
+          from_id?: string;
+        };
+        const sid = body.session_id || sessionId;
+        if (!sid) return Response.json({ error: "session_id required" }, { status: 400 });
+        if (!body.text || !body.text.trim()) return Response.json({ error: "text required" }, { status: 400 });
+
+        const sendReq: SendMessageRequest = {
+          from_id: body.from_id || "operator",
+          session_id: sid,
+          text: body.text.trim(),
+          msg_type: "chat",
+        };
+        if (body.to_slot_id != null && body.to_slot_id > 0) {
+          sendReq.to_slot_id = body.to_slot_id;
+        } else if (body.to_id) {
+          sendReq.to_id = body.to_id;
+        } else {
+          sendReq.to_id = "orchestrator";
+        }
+
+        const result = await broker.sendMessage(sendReq);
+        if (result && result.ok) {
+          fetchState(sid).then(newState => {
+            currentState = newState;
+            broadcastState(newState);
+          }).catch(() => {});
+        }
         return Response.json(result);
       } catch (e) {
         return Response.json({ error: String(e) }, { status: 500 });

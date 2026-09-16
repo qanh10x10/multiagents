@@ -139,6 +139,8 @@ export async function listModels(
   const keys = new Map<string, boolean>();
   for (const entry of raw) {
     const provider = record(entry);
+    // Skip built-in editor providers like Copilot in VS Code chatLanguageModels.json
+    if (provider.vendor === "copilot") continue;
     const name = text(provider.name);
     if (names.has(name)) invalid("Duplicate provider name in model catalog.");
     names.add(name);

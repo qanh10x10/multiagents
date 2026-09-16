@@ -663,3 +663,48 @@
   studioTab.addEventListener("click", () => { if (!ui.loaded && !ui.loading) loadStudio(); });
   renderStudio();
 })();
+
+
+// =========================================================================
+// AgentsRoom Dashboard Helpers
+// =========================================================================
+if (typeof window !== "undefined") {
+  window.AgentsRoom = {
+    categorizeSlots: (slots) => {
+      const groups = { needsInput: [], toReview: [], active: [], idle: [] };
+      for (const slot of slots || []) {
+        const state = slot.task_state || "idle";
+        if (state === "blocked" || slot.paused === 1) {
+          groups.needsInput.push(slot);
+        } else if (state === "done_pending_review") {
+          groups.toReview.push(slot);
+        } else if (slot.status === "connected" && (state === "working" || state === "addressing_feedback")) {
+          groups.active.push(slot);
+        } else {
+          groups.idle.push(slot);
+        }
+      }
+      return groups;
+    },
+    formatTokens: (num) => {
+      if (num == null) return "0";
+      const n = Number(num);
+      if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, "") + "M";
+      if (n >= 1_000) return (n / 1_000).toFixed(1).replace(/\.0$/, "") + "K";
+      return String(n);
+    },
+    sendDirectMessage: async (sessionId, toSlotId, text) => {
+      const res = await fetch("/api/message/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_id: sessionId,
+          to_slot_id: toSlotId || undefined,
+          text: text.trim(),
+          from_id: "operator",
+        }),
+      });
+      return await res.json();
+    }
+  };
+}

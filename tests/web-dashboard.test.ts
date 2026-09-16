@@ -190,6 +190,29 @@ describe("Web Dashboard — API endpoints", () => {
     });
     expect(res.status).toBe(400);
   });
+  test("/api/message/send rejects missing text", async () => {
+    const res = await fetch(`${DASHBOARD_URL}/api/message/send`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: "dash-test-session", text: "" }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test("/api/message/send sends message to slot or orchestrator", async () => {
+    const res = await fetch(`${DASHBOARD_URL}/api/message/send`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        session_id: "dash-test-session",
+        text: "Hello from dashboard test",
+        from_id: "operator",
+      }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json() as any;
+    expect(data.ok).toBe(true);
+  });
 });
 
 describe("Web Dashboard — WebSocket", () => {

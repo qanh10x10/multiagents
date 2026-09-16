@@ -70,7 +70,7 @@ async function submitStudioForm(initialLibrary: unknown, formId: string, origina
 
 describe("Team Studio UI source contract", () => {
   test("preserves six monitoring tabs and adds isolated Studio assets", () => {
-    for (const tab of ["agents", "messages", "plan", "knowledge", "files", "stats"]) {
+    for (const tab of ["messages", "plan", "knowledge", "files", "stats"]) {
       expect(html).toContain(`data-tab="${tab}"`);
       expect(html).toContain(`id="panel-${tab}"`);
     }

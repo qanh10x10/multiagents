@@ -40,8 +40,8 @@
     "version:minor": "bun run scripts/version.ts minor",
     "version:major": "bun run scripts/version.ts major",
     "prepack": "bun test",
-    "postinstall": "bun run scripts/postinstall.ts 2>/dev/null || true",
-    "preuninstall": "bun run scripts/preuninstall.ts 2>/dev/null || true"
+    "postinstall": "bun run scripts/postinstall.ts",
+    "preuninstall": "bun run scripts/preuninstall.ts"
   },
   "engines": {
     "bun": ">=1.1.0"
