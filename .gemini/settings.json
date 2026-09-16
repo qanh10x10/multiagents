@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "multiagents-peer": {
+      "command": "bun",
+      "args": [
+        "C:\\Users\\PC\\Desktop\\OutSources\\Git\\multiagents\\cli.ts",
+        "mcp-server",
+        "--agent-type",
+        "gemini"
+      ]
+    }
+  }
+}

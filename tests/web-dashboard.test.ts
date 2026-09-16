@@ -294,15 +294,25 @@ describe("Web Dashboard — WebSocket", () => {
 });
 
 describe("Web Dashboard — HTML content", () => {
-  test("contains all 6 tab panels", async () => {
+  test("contains conversation tabs without standalone agents panel", async () => {
     const res = await fetch(DASHBOARD_URL);
     const html = await res.text();
-    expect(html).toContain('data-tab="agents"');
+    expect(html).not.toContain('data-tab="agents"');
     expect(html).toContain('data-tab="messages"');
     expect(html).toContain('data-tab="plan"');
     expect(html).toContain('data-tab="knowledge"');
     expect(html).toContain('data-tab="files"');
     expect(html).toContain('data-tab="stats"');
+    expect(html).toContain("agent-rail");
+    expect(html).toContain("agent-rail-toggle");
+    expect(html).toContain('id="conversation-agents"');
+    expect(html).toContain('lang="vi"');
+    expect(html).not.toContain("5 giờ");
+    expect(html).not.toContain("Hằng tuần");
+    expect(html).toContain("Item tick hết vẫn chưa 100%");
+    expect(html).toContain("QC / đóng");
+    expect(html).toContain("msg-avatar");
+    expect(html).not.toContain("agent-model-badge");
   });
 
   test("contains WebSocket connection logic", async () => {

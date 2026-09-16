@@ -3,11 +3,12 @@
 // ============================================================================
 
 import type { AgentType, Guardrail } from "./types.ts";
+import { homedir } from "node:os";
 
 // --- Networking ---
 
 export const DEFAULT_BROKER_PORT = 7899;
-export const DEFAULT_DB_PATH = `${process.env.HOME}/.multiagents/peers.db`;
+export const DEFAULT_DB_PATH = `${process.env.HOME ?? homedir()}/.multiagents/peers.db`;
 export const BROKER_HOSTNAME = "127.0.0.1";
 
 // --- Polling intervals (ms) ---

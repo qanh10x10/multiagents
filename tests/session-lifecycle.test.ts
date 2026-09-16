@@ -11,8 +11,12 @@
  */
 
 import { test, expect, beforeAll, afterAll, describe } from "bun:test";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const BROKER_PORT = 17899; // Use a non-default port to avoid conflicts
+const BROKER_PORT = 17999;
 const BROKER_URL = `http://127.0.0.1:${BROKER_PORT}`;
 let brokerProc: import("bun").Subprocess | null = null;
 let testCounter = 0;
@@ -31,10 +35,9 @@ async function post(path: string, body: any): Promise<any> {
 }
 
 beforeAll(async () => {
-  // Start a fresh broker on a test-specific port with temp db
-  const brokerPath = new URL("../broker.ts", import.meta.url).pathname;
-  const tmpDb = `/tmp/multiagents-test-${Date.now()}.db`;
-  brokerProc = Bun.spawn(["bun", brokerPath], {
+  const brokerPath = fileURLToPath(new URL("../broker.ts", import.meta.url));
+  const tmpDb = join(mkdtempSync(join(tmpdir(), "multiagents-lifecycle-")), "broker.db");
+  brokerProc = Bun.spawn([process.execPath, brokerPath], {
     env: { ...process.env, MULTIAGENTS_PORT: String(BROKER_PORT), MULTIAGENTS_DB: tmpDb },
     stdout: "pipe",
     stderr: "pipe",
@@ -119,7 +122,7 @@ async function createTestSession() {
 }
 
 describe("Reviewer auto-approve on signal_done", () => {
-  test("reviewer role auto-transitions to approved", async () => {
+  test("reviewer role auto-transitions to released", async () => {
     const { session, reviewer } = await createTestSession();
 
     // Reviewer signals done
@@ -130,7 +133,36 @@ describe("Reviewer auto-approve on signal_done", () => {
     });
 
     expect(result.ok).toBe(true);
-    expect(result.task_state).toBe("approved"); // Auto-approved, NOT done_pending_review
+    expect(result.task_state).toBe("released");
+  });
+
+  test("solo engineer without reviewer auto-releases on signal_done", async () => {
+    const session = await post("/sessions/create", {
+      id: uid("solo-session"),
+      name: "test-solo-release",
+      project_dir: "/tmp/test-solo",
+    });
+    const engineer = await post("/slots/create", {
+      session_id: session.id,
+      display_name: "Solo Engineer",
+      agent_type: "claude",
+      role: "Software Engineer",
+    });
+    const peer = await post("/register", {
+      agent_type: "claude",
+      pid: 41001 + testCounter,
+      cwd: "/tmp/test-solo",
+      summary: "Solo starting",
+      session_id: session.id,
+      slot_id: engineer.id,
+    });
+    const result = await post("/lifecycle/signal-done", {
+      peer_id: peer.id,
+      session_id: session.id,
+      summary: "Feature done.",
+    });
+    expect(result.ok).toBe(true);
+    expect(result.task_state).toBe("released");
   });
 
   test("non-reviewer role goes to done_pending_review", async () => {
@@ -146,7 +178,7 @@ describe("Reviewer auto-approve on signal_done", () => {
     expect(result.task_state).toBe("done_pending_review");
   });
 
-  test("QA role also auto-approves", async () => {
+  test("QA role also auto-releases", async () => {
     const session = await post("/sessions/create", {
       id: uid("qa-session"),
       name: "test-qa-approve",
@@ -174,12 +206,12 @@ describe("Reviewer auto-approve on signal_done", () => {
     });
 
     expect(result.ok).toBe(true);
-    expect(result.task_state).toBe("approved");
+    expect(result.task_state).toBe("released");
   });
 });
 
 describe("Approval workflow", () => {
-  test("reviewer approve transitions engineer to approved", async () => {
+  test("reviewer approve transitions engineer to released", async () => {
     const { session, engineer, reviewer } = await createTestSession();
 
     // Engineer signals done
@@ -197,7 +229,7 @@ describe("Approval workflow", () => {
     });
 
     expect(result.ok).toBe(true);
-    expect(result.task_state).toBe("approved");
+    expect(result.task_state).toBe("released");
   });
 });
 
@@ -278,7 +310,7 @@ describe("Signal done notifications", () => {
 });
 
 describe("Full session lifecycle", () => {
-  test("complete 3-agent workflow: signal_done → approve → all approved", async () => {
+  test("complete 3-agent workflow: signal_done → approve → all released", async () => {
     const { session, designer, engineer, reviewer } = await createTestSession();
 
     // 1. Designer provides specs and signals done (goes to done_pending_review)
@@ -303,7 +335,7 @@ describe("Full session lifecycle", () => {
       session_id: session.id,
       target_slot_id: engineer.slot.id,
     });
-    expect(approveEng.task_state).toBe("approved");
+    expect(approveEng.task_state).toBe("released");
 
     // 4. Reviewer approves designer
     const approveDes = await post("/lifecycle/approve", {
@@ -311,7 +343,7 @@ describe("Full session lifecycle", () => {
       session_id: session.id,
       target_slot_id: designer.slot.id,
     });
-    expect(approveDes.task_state).toBe("approved");
+    expect(approveDes.task_state).toBe("released");
 
     // 5. Reviewer signals done → auto-approved (reviewer role)
     const reviewerDone = await post("/lifecycle/signal-done", {
@@ -319,12 +351,11 @@ describe("Full session lifecycle", () => {
       session_id: session.id,
       summary: "All code reviewed and approved.",
     });
-    expect(reviewerDone.task_state).toBe("approved");
+    expect(reviewerDone.task_state).toBe("released");
 
-    // Verify all slots are approved
     const slots = await post("/slots/list", { session_id: session.id });
     for (const slot of slots) {
-      expect(slot.task_state).toBe("approved");
+      expect(slot.task_state).toBe("released");
     }
   });
 
@@ -366,8 +397,8 @@ describe("Full session lifecycle", () => {
     const reviewerSlot = slots.find((s: any) => s.display_name === "Reviewer");
 
     expect(designerSlot.task_state).toBe("done_pending_review"); // Stuck!
-    expect(engineerSlot.task_state).toBe("approved");
-    expect(reviewerSlot.task_state).toBe("approved");
+    expect(engineerSlot.task_state).toBe("released");
+    expect(reviewerSlot.task_state).toBe("released");
 
     // This is the exact scenario from the circle-shape-html session.
     // The orchestrator's auto-approve loop should detect this and auto-approve

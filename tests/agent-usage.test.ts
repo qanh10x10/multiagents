@@ -1,6 +1,47 @@
 import { expect, test } from "bun:test";
 import { applyUsageUpdate } from "../shared/agent-usage.ts";
-import { codexUsageUpdate, monitorCodexDriver } from "../orchestrator/monitor.ts";
+import { codexUsageUpdate, monitorCodexDriver, parseEngineUsage } from "../orchestrator/monitor.ts";
+
+test("parseEngineUsage parses Claude, Codex, Gemini CLI, and Grok/OpenAI usage correctly", () => {
+  // Claude
+  const claudeResult = {
+    type: "result",
+    result: { usage: { input_tokens: 150, output_tokens: 45, cache_read_input_tokens: 30 } },
+  };
+  expect(parseEngineUsage(claudeResult)).toEqual({ input: 150, output: 45, cacheRead: 30 });
+
+  // Gemini CLI stream-json / json format
+  const geminiResult = {
+    type: "result",
+    status: "success",
+    stats: { total_tokens: 500, input_tokens: 350, output_tokens: 150, cached: 80 },
+  };
+  expect(parseEngineUsage(geminiResult)).toEqual({ input: 350, output: 150, cacheRead: 80 });
+
+  // Codex token_count format
+  const codexTokenCount = {
+    msg: {
+      type: "token_count",
+      info: { total_token_usage: { input_tokens: 200, output_tokens: 50, cached_input_tokens: 10 } },
+    },
+  };
+  expect(parseEngineUsage(codexTokenCount)).toEqual({ input: 200, output: 50, cacheRead: 10 });
+
+  // Grok (xAI) / OpenAI standard usage format
+  const grokUsage = {
+    usage: {
+      prompt_tokens: 400,
+      completion_tokens: 120,
+      total_tokens: 520,
+      prompt_tokens_details: { cached_tokens: 100 },
+    },
+  };
+  expect(parseEngineUsage(grokUsage)).toEqual({ input: 400, output: 120, cacheRead: 100 });
+
+  // Fallback / null
+  expect(parseEngineUsage({})).toBeNull();
+  expect(parseEngineUsage(null)).toBeNull();
+});
 
 const tokens = (input = 100, cached = 20, output = 30, threadId = "thread-one") => ({
   method: "thread/tokenUsage/updated", params: { threadId, tokenUsage: { total: { inputTokens: input, cachedInputTokens: cached, outputTokens: output } } },

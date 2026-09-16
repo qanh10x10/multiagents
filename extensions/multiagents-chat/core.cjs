@@ -56,6 +56,7 @@ function decodeObservation(text, session) {
   const count = n => Number.isSafeInteger(n) && n >= 0 ? n : null;
   return { session: { id: session, status: clean(value.session.status, 80) },
     agents: value.agents.map(a => ({ id: a.id, name: clean(a.name, 200), connection: clean(a.connection, 80), task: clean(a.task, 80), paused: a.paused,
+      model: a.model == null ? null : clean(a.model, 200),
       usage: a.usage?.observedAt && Number.isFinite(a.usage.observedAt) ? { observedAt: a.usage.observedAt, input: count(a.usage.input), cached: count(a.usage.cached), output: count(a.usage.output) } : null })),
     messages: records(value.messages), events: records(value.events),
     plan: value.plan && Array.isArray(value.plan.items) ? { completion: Number.isFinite(value.plan.completion) ? value.plan.completion : null,
@@ -73,8 +74,8 @@ function safeText(text) {
 function statusText(snapshot) {
   return [`Phiên: ${snapshot.session.id} (${snapshot.session.status})`,
     ...snapshot.agents.map(agent => `${agent.name} [${agent.id}] · AI | kết nối: ${agent.connection} | nhiệm vụ: ${agent.task} | tạm dừng: ${agent.paused ? "có" : "không"}`),
-    `Kế hoạch đã ghi: ${snapshot.plan?.completion == null ? "chưa rõ" : `${snapshot.plan.completion}%`}. Chưa xác minh tiến độ bàn giao.`,
-    ...(snapshot.plan?.items ?? []).map(item => `  ${item.status}: ${item.label} (${item.agent ?? "chưa giao"})`),
+    `Kế hoạch đã ghi: ${snapshot.plan?.completion == null ? "chưa rõ" : `${snapshot.plan.completion}%`}. 100% chỉ khi worker đã released. Chưa xác minh tiến độ bàn giao.`,
+    ...(snapshot.plan?.items ?? []).map((item, i) => `  ${i + 1}. ${item.status}: ${item.label} (${item.agent ?? "chưa giao"})`),
   ].join("\n");
 }
 

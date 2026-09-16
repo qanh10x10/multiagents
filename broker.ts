@@ -21,7 +21,7 @@ import {
   DEFAULT_GUARDRAILS,
   CLEANUP_INTERVAL,
 } from "./shared/constants.ts";
-import { generatePeerId, safeJsonParse } from "./shared/utils.ts";
+import { generatePeerId, safeJsonParse, computePlanCompletion } from "./shared/utils.ts";
 import { applyUsageUpdate } from "./shared/agent-usage.ts";
 import type {
   RegisterRequest,
@@ -1183,6 +1183,23 @@ function handleUpdateGuardrail(body: UpdateGuardrailRequest) {
   return allGuardrails.find((g) => g.id === body.guardrail_id) ?? allGuardrails[0];
 }
 
+function isReviewRole(role: string | null | undefined): boolean {
+  return Boolean(role && /qa|review|test|lead/i.test(role));
+}
+
+function releaseSlot(sessionId: string, slotId: number, releasedBy: string, message?: string) {
+  const targetSlot = db.query("SELECT * FROM slots WHERE id = ?").get(slotId) as any;
+  if (!targetSlot) return;
+  db.run("UPDATE slots SET task_state = 'released' WHERE id = ?", [slotId]);
+  const toId = targetSlot.peer_id ?? `__slot_${slotId}__`;
+  db.run(
+    "INSERT INTO messages (session_id, from_id, from_slot_id, to_id, to_slot_id, text, msg_type, sent_at, delivered, held) VALUES (?, ?, NULL, ?, ?, ?, 'release', ?, 0, 0)",
+    [sessionId, releasedBy, toId, slotId,
+     `RELEASED: You are cleared to disconnect.${message ? " " + message : ""} Your work is complete. You may now exit.`,
+     new Date().toISOString()],
+  );
+}
+
 // --- Plans ---
 
 interface CreatePlanRequest {
@@ -1225,12 +1242,11 @@ function handleGetPlan(body: { session_id: string }) {
   const items = db.query(
     "SELECT pi.*, s.display_name as assigned_name FROM plan_items pi LEFT JOIN slots s ON s.id = pi.assigned_to_slot WHERE pi.plan_id = ? ORDER BY pi.sort_order",
   ).all(plan.id) as any[];
+  const slots = db.query(
+    "SELECT task_state FROM slots WHERE session_id = ?",
+  ).all(body.session_id) as { task_state: string }[];
 
-  const total = items.length;
-  const done = items.filter((i: any) => i.status === "done").length;
-  const completion = total > 0 ? Math.round((done / total) * 100) : 0;
-
-  return { plan, items, completion };
+  return { plan, items, completion: computePlanCompletion(items, slots) };
 }
 
 function handleUpdatePlanItem(body: { item_id: number; status: string; session_id?: string }) {
@@ -1471,16 +1487,22 @@ Bun.serve({
           const allSlots = db.query("SELECT * FROM slots WHERE session_id = ? AND id != ?").all(session_id, peer.slot_id) as any[];
           const thisSlot = db.query("SELECT * FROM slots WHERE id = ?").get(peer.slot_id) as any;
 
-          // Reviewers/QA auto-approve on signal_done — they don't need external review.
-          const isReviewerRole = thisSlot.role && /qa|review|test|lead/i.test(thisSlot.role);
-          const newTaskState = isReviewerRole ? "approved" : "done_pending_review";
+          // Reviewers/QA auto-approve on signal_done. No reviewer in the session:
+          // work is done, close the worker. Do not leave done_pending_review forever.
+          const isReviewerRole = isReviewRole(thisSlot.role);
+          const hasReviewer = allSlots.some((s) => isReviewRole(s.role));
+          let newTaskState = isReviewerRole || !hasReviewer ? "approved" : "done_pending_review";
           db.run("UPDATE slots SET task_state = ? WHERE id = ?", [newTaskState, peer.slot_id]);
+          if (newTaskState === "approved") {
+            releaseSlot(session_id, peer.slot_id, peer_id, "Task done. Worker closed.");
+            newTaskState = "released";
+          }
 
           let notifiedCount = 0;
           for (const targetSlot of allSlots) {
             // Notify connected peers AND driver-managed slots (no peer_id but status=connected)
             if (targetSlot.status === "connected") {
-              const isReviewerLike = targetSlot.role && /qa|review|test|lead/i.test(targetSlot.role);
+              const isReviewerLike = isReviewRole(targetSlot.role);
               const msgType = isReviewerLike ? "review_request" : "task_complete";
               const toId = targetSlot.peer_id ?? `__slot_${targetSlot.id}__`;
               db.run(
@@ -1565,16 +1587,16 @@ Bun.serve({
 
           let newState: string;
           if (allReviewRolesApproved || singleReviewerApproved) {
-            db.run("UPDATE slots SET task_state = 'approved' WHERE id = ?", [target_slot_id]);
-            newState = "approved";
+            releaseSlot(session_id, target_slot_id, peer_id ?? "__orchestrator__", "Approved. Worker closed.");
+            newState = "released";
           } else {
             // Keep in done_pending_review — still waiting for more approvals
             newState = targetSlot.task_state;
           }
 
           const remaining = [...reviewRoles].filter(r => !approverRoles.has(r));
-          const statusMsg = newState === "approved"
-            ? "All required approvals received."
+          const statusMsg = newState === "released"
+            ? "All required approvals received. Worker closed."
             : `Approval recorded (${approverRole}). Still waiting for: ${remaining.join(", ")}.`;
 
           return Response.json({ ok: true, task_state: newState, approvals: approverRoles.size, required: reviewRoles.size, message: statusMsg });
@@ -1584,18 +1606,7 @@ Bun.serve({
           const { session_id, target_slot_id, released_by, message } = body as ReleaseAgentRequest;
           const targetSlot = db.query("SELECT * FROM slots WHERE id = ?").get(target_slot_id) as any;
           if (!targetSlot) return Response.json({ error: "Target slot not found" }, { status: 404 });
-
-          db.run("UPDATE slots SET task_state = 'released' WHERE id = ?", [target_slot_id]);
-
-          if (targetSlot.peer_id) {
-            db.run(
-              "INSERT INTO messages (session_id, from_id, from_slot_id, to_id, to_slot_id, text, msg_type, sent_at, delivered, held) VALUES (?, ?, NULL, ?, ?, ?, 'release', ?, 0, 0)",
-              [session_id, released_by, targetSlot.peer_id, target_slot_id,
-               `RELEASED: You are cleared to disconnect.${message ? " " + message : ""} Your work is complete. You may now exit.`,
-               new Date().toISOString()]
-            );
-          }
-
+          releaseSlot(session_id, target_slot_id, released_by, message);
           return Response.json({ ok: true, task_state: "released" });
         }
 

@@ -121,7 +121,7 @@ export async function getTeamStatus(
     if (plan?.items && plan.items.length > 0) {
       planTotal = plan.items.length;
       planDone = plan.items.filter((i: any) => i.status === "done").length;
-      planCompletion = Math.round((planDone / planTotal) * 100);
+      planCompletion = plan.completion;
     }
   } catch { /* no plan */ }
 

@@ -109,6 +109,24 @@ const AGENT_COMMANDS: Record<AgentType, string> = {
   custom: "",
 };
 
+export function resolveGeminiCommand(): { cmd: string; prefixArgs: string[] } {
+  if (process.platform === "win32") {
+    const home = homedir();
+    const appData = process.env.APPDATA || path.join(home, "AppData", "Roaming");
+    const userProfile = process.env.USERPROFILE || home;
+    const candidatePaths = [
+      path.join(appData, "npm", "node_modules", "@google", "gemini-cli", "bundle", "gemini.js"),
+      path.join(userProfile, "AppData", "Local", "pnpm", "global", "v11", "9d8f581df8675bb87fec360975f71fdd7b7a673ceee3cc15ac05b59ba67a6d55", "node_modules", "@google", "gemini-cli", "bundle", "gemini.js"),
+    ];
+    for (const p of candidatePaths) {
+      if (fs.existsSync(p)) {
+        return { cmd: "node", prefixArgs: [p] };
+      }
+    }
+  }
+  return { cmd: "npx", prefixArgs: ["-y", "@google/gemini-cli"] };
+}
+
 /**
  * Detect whether an agent CLI is installed and available on PATH.
  * Handles both direct binaries (claude, codex) and npx-based tools (gemini).
@@ -121,16 +139,17 @@ export async function detectAgent(type: AgentType): Promise<AgentDetection> {
 
   const spawnEnv = { ...process.env, PATH: ENRICHED_PATH };
 
-  // Gemini is invoked via npx — check if the package is available
+  // Gemini is invoked via npx or directly via node on Windows
   if (type === "gemini") {
     try {
-      const proc = Bun.spawnSync(["npx", "-y", "@google/gemini-cli", "--version"], {
+      const { cmd: gCmd, prefixArgs } = resolveGeminiCommand();
+      const proc = Bun.spawnSync([gCmd, ...prefixArgs, "--version"], {
         timeout: 15_000,
         env: spawnEnv,
       });
       const out = new TextDecoder().decode(proc.stdout).trim();
       if (proc.exitCode === 0 && out) {
-        return { available: true, version: out.split("\n")[0], path: "npx" };
+        return { available: true, version: out.split("\n")[0], path: gCmd };
       }
     } catch { /* ok */ }
     return { available: false };
@@ -229,7 +248,7 @@ export async function ensureMcpConfigs(projectDir: string, sessionId: string): P
   // ~/.codex/config.toml. Project-level .codex/config.toml is ignored for
   // MCP server discovery, and `-c mcp_servers.*` overrides are silently
   // dropped. The ONLY way to inject MCP servers is the global config file.
-  const codexGlobalDir = path.join(process.env.HOME ?? "", ".codex");
+  const codexGlobalDir = path.join(process.env.HOME ?? homedir(), ".codex");
   if (!fs.existsSync(codexGlobalDir)) fs.mkdirSync(codexGlobalDir, { recursive: true });
 
   const codexTomlPath = path.join(codexGlobalDir, "config.toml");
@@ -259,7 +278,7 @@ export async function ensureMcpConfigs(projectDir: string, sessionId: string): P
   await Bun.write(codexTomlPath, codexToml.trimEnd() + "\n" + codexEntry);
 
   // --- Gemini: ~/.gemini/settings.json ---
-  const geminiSettingsPath = path.join(process.env.HOME ?? "", ".gemini", "settings.json");
+  const geminiSettingsPath = path.join(process.env.HOME ?? homedir(), ".gemini", "settings.json");
   try {
     let geminiConfig: Record<string, unknown> = {};
     try {
@@ -608,8 +627,24 @@ export async function launchAgent(
   }
 
   // --- Claude / Gemini / Custom: traditional process spawn ---
-  const args = buildCliArgs(config.agent_type, taskPrompt, spawnEnv);
-  const cmd = AGENT_COMMANDS[config.agent_type];
+  let args = buildCliArgs(config.agent_type, taskPrompt, spawnEnv);
+  let cmd = AGENT_COMMANDS[config.agent_type];
+
+  if (config.agent_type === "gemini") {
+    const { cmd: gCmd, prefixArgs } = resolveGeminiCommand();
+    cmd = gCmd;
+    // On Windows with node, strip "-y", "@google/gemini-cli" prefix from buildCliArgs
+    if (gCmd === "node") {
+      args = [...prefixArgs, ...args.slice(2)];
+    }
+    if (process.platform === "win32") {
+      args = args.filter((a) => a !== "--sandbox");
+      if (!args.includes("--skip-trust")) {
+        args.splice(prefixArgs.length, 0, "--skip-trust");
+      }
+      spawnEnv.GEMINI_CLI_TRUST_WORKSPACE = "true";
+    }
+  }
 
   if (!cmd) {
     throw new Error(`No CLI command configured for agent type: ${config.agent_type}`);
@@ -708,8 +743,23 @@ export async function relaunchIntoSlot(
   };
   delete spawnEnv.CLAUDECODE;
 
-  const args = buildCliArgs(slot.agent_type, taskPrompt, spawnEnv);
-  const cmd = AGENT_COMMANDS[slot.agent_type];
+  let args = buildCliArgs(slot.agent_type, taskPrompt, spawnEnv);
+  let cmd = AGENT_COMMANDS[slot.agent_type];
+
+  if (slot.agent_type === "gemini") {
+    const { cmd: gCmd, prefixArgs } = resolveGeminiCommand();
+    cmd = gCmd;
+    if (gCmd === "node") {
+      args = [...prefixArgs, ...args.slice(2)];
+    }
+    if (process.platform === "win32") {
+      args = args.filter((a) => a !== "--sandbox");
+      if (!args.includes("--skip-trust")) {
+        args.splice(prefixArgs.length, 0, "--skip-trust");
+      }
+      spawnEnv.GEMINI_CLI_TRUST_WORKSPACE = "true";
+    }
+  }
 
   if (!cmd) {
     throw new Error(`No CLI command configured for agent type: ${slot.agent_type}`);

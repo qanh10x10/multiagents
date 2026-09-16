@@ -45,11 +45,15 @@ function collectFlagValues(args: string[], flag: string): string[] {
 }
 
 beforeEach(() => {
-  tmpDir = fs.mkdtempSync(path.join("/tmp", "launcher-test-"));
+  tmpDir = fs.mkdtempSync(path.join(fs.realpathSync(require("node:os").tmpdir()), "launcher-test-"));
 });
 
 afterEach(() => {
-  fs.rmSync(tmpDir, { recursive: true, force: true });
+  if (tmpDir && fs.existsSync(tmpDir)) {
+    try {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    } catch {}
+  }
 });
 
 // ---------------------------------------------------------------------------

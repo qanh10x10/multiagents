@@ -60,7 +60,8 @@ function colorStatus(status: string): string {
 
 function colorTaskState(state: string): string {
   switch (state) {
-    case "idle": return `${DIM}idle${RESET}`;
+    case "idle":
+    case "standby": return `${DIM}standby${RESET}`;
     case "working": return `${CYAN}working${RESET}`;
     case "done_pending_review": return `${YELLOW}done→review${RESET}`;
     case "addressing_feedback": return `${MAGENTA}fixing${RESET}`;
@@ -990,13 +991,19 @@ function renderPlanTab(state: DashboardState, cols: number, maxRows: number, lin
   const pct = ps.completion / 100;
   const bar = progressBar(pct, 30);
   const done = ps.items.filter((i) => i.status === "done").length;
+  const openWorkers = state.slots.filter((s) => s.task_state !== "released").length;
   lines.push("");
-  lines.push(` ${BOLD}${ps.plan.title}${RESET}  ${bar}  ${BOLD}${ps.completion}%${RESET} ${DIM}(${done}/${ps.items.length})${RESET}`);
+  lines.push(` ${BOLD}${ps.plan.title}${RESET}  ${bar}  ${BOLD}${ps.completion}%${RESET} ${DIM}(${done}/${ps.items.length} item)${RESET}`);
+  if (openWorkers > 0) {
+    lines.push(` ${YELLOW}${openWorkers} worker chưa đóng — không báo 100%${RESET}`);
+  }
   lines.push("");
 
   // Plan items
+  let taskNo = 0;
   for (const item of ps.items) {
     const indent = item.parent_id ? "    " : "  ";
+    const num = item.parent_id ? "" : `${++taskNo}. `;
     let marker: string;
     let labelColor: string;
 
@@ -1019,10 +1026,10 @@ function renderPlanTab(state: DashboardState, cols: number, maxRows: number, lin
     }
 
     const assignee = item.assigned_name ? `${DIM}${item.assigned_name}${RESET}` : "";
-    const statusTag = item.status === "in_progress" ? ` ${CYAN}(in progress)${RESET}` : "";
+    const statusTag = item.status === "in_progress" ? ` ${CYAN}(đang làm)${RESET}` : item.status === "blocked" ? ` ${RED}(bị chặn)${RESET}` : "";
     const label = `${labelColor}${item.label}${labelColor ? RESET : ""}`;
 
-    const itemLine = `${indent}${marker} ${label}${statusTag}`;
+    const itemLine = `${indent}${marker} ${num}${label}${statusTag}`;
     const assigneePad = assignee ? "  " + assignee : "";
 
     // Right-align assignee

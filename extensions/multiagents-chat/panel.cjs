@@ -33,9 +33,30 @@ function createConversationPanel(vscode, context) {
       <header><h1>Phòng hội thoại</h1><p>Báo cáo thật từ worker AI và người điều hành. Tổng hợp của điều phối AI nằm riêng trong Chat.</p>
       <label for="session">Phiên đã quan sát</label><select id="session"></select><button id="chat" type="button">Hướng dẫn mở Chat</button>
       <p id="status" role="status"></p><p>Chỉ đọc bản quan sát từ @multiagents /status hoặc /watch. Để chọn phiên mới và xác nhận điều khiển, dùng @multiagents trong Chat.</p></header>
-      <main><section aria-labelledby="conversation-title"><h2 id="conversation-title">Hội thoại</h2><div id="timeline" role="region" tabindex="0" aria-label="Lịch sử hội thoại"></div>
-      <button id="latest" type="button" hidden>Đến tin mới nhất</button><details><summary>Sự kiện hệ thống</summary><div id="events"></div></details></section>
-      <aside aria-label="Worker và nhiệm vụ"><h2>Nhóm đang làm gì</h2><div id="agents"></div><h2>Kế hoạch đã ghi</h2><div id="plan"></div></aside></main>
+      <main><section class="conversation-container" aria-labelledby="conversation-title">
+      <div class="conversation-body-wrapper">
+        <div class="feed-column">
+          <div class="conversation-header">
+            <h2 id="conversation-title">Hội thoại</h2>
+            <span class="header-hint meta">Giao tiếp điều phối và báo cáo AI thời gian thực</span>
+          </div>
+          <div id="timeline" role="region" tabindex="0" aria-label="Lịch sử hội thoại"></div>
+          <button id="latest" type="button" hidden>Đến tin mới nhất</button>
+          <details class="system-events-details"><summary>Sự kiện hệ thống</summary><div id="events"></div></details>
+        </div>
+        <aside id="agent-rail" class="agent-rail collapsed" aria-label="Đội ngũ Agents">
+          <div class="agent-rail-header">
+            <button id="toggle-agent-rail" type="button" class="agent-rail-toggle" aria-expanded="false" title="Thu gọn / Mở rộng chi tiết Agents">
+              <span class="toggle-icon">⇄</span>
+              <span class="toggle-scent-text">Đội ngũ Agents</span>
+              <span id="agent-count-badge" class="badge badge-system">0</span>
+            </button>
+          </div>
+          <div id="agents" class="agent-rail-list"></div>
+        </aside>
+      </div>
+    </section>
+    <aside class="plan-sidebar" aria-label="Kế hoạch"><h2>Kế hoạch đã ghi</h2><div id="plan"></div></aside></main>
       <script nonce="${nonce}" src="${resource("panel.js")}"></script></body></html>`;
     const receiver = panel.webview.onDidReceiveMessage(message => {
       if (!validMessage(message)) return;

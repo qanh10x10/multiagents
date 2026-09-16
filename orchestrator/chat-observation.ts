@@ -28,7 +28,9 @@ export async function getChatObservation(broker: BrokerClient, sessionId: string
     session: { id: session.id, status: session.status },
     agents: slots.map(slot => ({ id: slot.id, name: names.get(slot.id),
       connection: slot.status, task: slot.task_state, paused: Boolean(slot.paused),
-      lastConnected: slot.last_connected, lastDisconnected: slot.last_disconnected, usage: usage(slot) })),
+      lastConnected: slot.last_connected, lastDisconnected: slot.last_disconnected,
+      model: slot.model_selection?.model || slot.agent_type || null,
+      usage: usage(slot) })),
     plan: plan ? { completion: plan.completion, items: plan.items.map(item => ({
       label: item.label, status: item.status, agent: names.get(item.assigned_to_slot ?? -1) ?? null,
     })) } : null,

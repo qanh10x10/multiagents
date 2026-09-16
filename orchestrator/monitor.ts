@@ -20,6 +20,61 @@ type ProcessReadableStream = Exclude<Subprocess["stdout"], number | null | undef
 // Track last-seen cumulative tokens per slot (Codex sends cumulative totals)
 const lastTokenTotals = new Map<number, { input: number; output: number; cacheRead: number }>();
 
+/** Exported helper to parse token usage from varied engine outputs (Claude, Codex, Gemini CLI, Grok/OpenAI). */
+export function parseEngineUsage(parsed: any): { input: number; output: number; cacheRead: number } | null {
+  if (!parsed || typeof parsed !== "object") return null;
+
+  // 1. Claude stream-json result
+  if (parsed.type === "result" && parsed.result?.usage) {
+    const usage = parsed.result.usage;
+    return {
+      input: Number(usage.input_tokens ?? 0),
+      output: Number(usage.output_tokens ?? 0),
+      cacheRead: Number(usage.cache_read_input_tokens ?? usage.cache_creation_input_tokens ?? 0),
+    };
+  }
+
+  // 2. Gemini CLI stream-json / json format:
+  // Can be { type: "result", stats: { input_tokens, output_tokens, cached } }
+  // or { stats: { input_tokens, output_tokens, cached } }
+  const stats = parsed.stats ?? (parsed.type === "result" ? parsed.stats : undefined);
+  if (stats && (stats.input_tokens !== undefined || stats.output_tokens !== undefined || stats.total_tokens !== undefined)) {
+    return {
+      input: Number(stats.input_tokens ?? stats.inputTokens ?? 0),
+      output: Number(stats.output_tokens ?? stats.outputTokens ?? 0),
+      cacheRead: Number(stats.cached ?? stats.cached_tokens ?? 0),
+    };
+  }
+
+  // 3. Codex token_count message
+  if (parsed.msg?.type === "token_count" && parsed.msg?.info?.total_token_usage) {
+    const tu = parsed.msg.info.total_token_usage;
+    return {
+      input: Number(tu.input_tokens ?? 0),
+      output: Number(tu.output_tokens ?? 0),
+      cacheRead: Number(tu.cached_input_tokens ?? 0),
+    };
+  }
+
+  // 4. OpenAI / Grok (xAI) / custom gateway standard usage object:
+  // e.g. { usage: { prompt_tokens, completion_tokens, total_tokens, prompt_tokens_details: { cached_tokens } } }
+  // or { response: { usage: ... } }
+  const genericUsage = parsed.usage ?? parsed.response?.usage;
+  if (genericUsage && (genericUsage.prompt_tokens !== undefined || genericUsage.input_tokens !== undefined)) {
+    const cached = genericUsage.prompt_tokens_details?.cached_tokens
+      ?? genericUsage.cached_tokens
+      ?? genericUsage.cache_read_input_tokens
+      ?? 0;
+    return {
+      input: Number(genericUsage.prompt_tokens ?? genericUsage.input_tokens ?? 0),
+      output: Number(genericUsage.completion_tokens ?? genericUsage.output_tokens ?? 0),
+      cacheRead: Number(cached),
+    };
+  }
+
+  return null;
+}
+
 function isReadableStream(
   stream: Subprocess["stdout"] | Subprocess["stderr"],
 ): stream is ProcessReadableStream {
@@ -168,7 +223,13 @@ async function processLine(
   try {
     const parsed = JSON.parse(line);
 
-    // Claude stream-json result message (includes final token usage)
+    // Multi-engine token usage parsing (Claude, Codex, Gemini CLI, Grok/OpenAI)
+    const tokenUsage = parseEngineUsage(parsed);
+    if (tokenUsage) {
+      await updateTokenUsage(slotId, tokenUsage, brokerClient);
+    }
+
+    // Claude stream-json result message
     if (parsed.type === "result" && parsed.result) {
       onEvent({
         type: "agent_output",
@@ -178,26 +239,60 @@ async function processLine(
         message: `Agent produced result`,
         data: { result: parsed.result },
       });
-
-      // Extract token usage from Claude result
-      const usage = parsed.result?.usage;
-      if (usage) {
-        await updateTokenUsage(slotId, {
-          input: usage.input_tokens ?? 0,
-          output: usage.output_tokens ?? 0,
-          cacheRead: usage.cache_read_input_tokens ?? usage.cache_creation_input_tokens ?? 0,
-        }, brokerClient);
-      }
     }
 
-    // Codex token_count message
-    if (parsed.msg?.type === "token_count" && parsed.msg?.info?.total_token_usage) {
-      const tu = parsed.msg.info.total_token_usage;
-      await updateTokenUsage(slotId, {
-        input: tu.input_tokens ?? 0,
-        output: tu.output_tokens ?? 0,
-        cacheRead: tu.cached_input_tokens ?? 0,
-      }, brokerClient);
+    // Gemini CLI result event: { type: "result", status: "success"|"error", stats: { ... } }
+    if (parsed.type === "result" && (parsed.stats || parsed.status)) {
+      onEvent({
+        type: "agent_output",
+        severity: parsed.status === "error" ? "warning" : "info",
+        slotId,
+        sessionId,
+        message: `Gemini CLI turn finished (${parsed.status ?? "success"})`,
+        data: { stats: parsed.stats },
+      });
+    }
+
+    // Gemini CLI activity events:
+    // { type: "message", role: "assistant", content: "..." }
+    // { type: "tool_use", tool_name: "...", parameters: { ... } }
+    // { type: "tool_result", tool_name: "...", status: "success" }
+    if (parsed.type === "message" && parsed.role === "assistant" && parsed.content) {
+      await autoTransitionToWorking(slotId, brokerClient);
+      const text = typeof parsed.content === "string" ? parsed.content : JSON.stringify(parsed.content);
+      try {
+        await brokerClient.updateSlot({
+          id: slotId,
+          context_snapshot: JSON.stringify({
+            last_summary: text.slice(0, 200),
+            last_status: "working",
+            updated_at: Date.now(),
+          }),
+        });
+      } catch { /* best effort */ }
+    }
+
+    if (parsed.type === "tool_use") {
+      await autoTransitionToWorking(slotId, brokerClient);
+      const toolName = parsed.tool_name ?? parsed.name ?? "unknown";
+      try {
+        await brokerClient.updateSlot({
+          id: slotId,
+          context_snapshot: JSON.stringify({
+            last_summary: `Tool: ${toolName}`,
+            last_status: "working",
+            updated_at: Date.now(),
+          }),
+        });
+      } catch { /* best effort */ }
+      onEvent({
+        type: "agent_progress",
+        severity: "info",
+        slotId,
+        sessionId,
+        message: `Gemini using tool: ${toolName}`,
+        data: { tool: toolName },
+      });
     }
 
     // Codex JSONL activity events — update context_snapshot so the

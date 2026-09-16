@@ -4,6 +4,7 @@
 
 import type { AgentType } from "./types.ts";
 import { AGENT_ID_PREFIXES } from "./constants.ts";
+import { homedir } from "node:os";
 
 /** Generate a prefixed peer ID (e.g., "cl-a1b2c3") */
 export function generatePeerId(agentType: AgentType): string {
@@ -69,7 +70,7 @@ export function safeJsonParse<T>(str: string | null, fallback: T): T {
 /** Resolve home directory in a path */
 export function expandHome(path: string): string {
   if (path.startsWith("~/")) {
-    return `${process.env.HOME}${path.slice(1)}`;
+    return `${process.env.HOME ?? homedir()}${path.slice(1)}`;
   }
   return path;
 }
@@ -115,6 +116,29 @@ export function slugify(text: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
+}
+
+/** Partial credit for a plan item. Blocked/pending contribute nothing. */
+export function planItemScore(status: string): number {
+  if (status === "done") return 1;
+  if (status === "in_progress") return 0.5;
+  return 0;
+}
+
+/**
+ * Honest plan %. Item ticks are not session done.
+ * 100% only when every slot is released (workers actually closed).
+ */
+export function computePlanCompletion(
+  items: { status: string }[],
+  slots: { task_state?: string | null }[] = [],
+): number {
+  if (!items.length) return 0;
+  const raw = items.reduce((sum, item) => sum + planItemScore(item.status), 0) / items.length;
+  let pct = Math.round(raw * 100);
+  const workersClosed = slots.length > 0 && slots.every((s) => s.task_state === "released");
+  if (pct >= 100 && slots.length > 0 && !workersClosed) pct = 99;
+  return Math.max(0, Math.min(100, pct));
 }
 
 // Re-export AGENT_ID_PREFIXES for convenience
