@@ -3,13 +3,13 @@
 [![npm version](https://img.shields.io/npm/v/multiagents.svg)](https://www.npmjs.com/package/multiagents)
 [![npm downloads](https://img.shields.io/npm/dm/multiagents.svg)](https://www.npmjs.com/package/multiagents)
 
-Multi-agent orchestration platform for **Claude Code**, **Codex CLI**, and **Gemini CLI**. Enables AI agents to discover each other, communicate in real-time, coordinate file edits, and work as a team on shared codebases.
+Nền tảng điều phối đa agent cho **Claude Code**, **Codex CLI**, và **Gemini CLI**. Agent tự tìm nhau, nhắn tin thời gian thực, khóa file, làm việc theo team trên cùng codebase.
 
-Built on [MCP (Model Context Protocol)](https://modelcontextprotocol.io/).
+Xây trên [MCP (Model Context Protocol)](https://modelcontextprotocol.io/).
 
-## Screenshots
+## Ảnh chụp
 
-Web dashboard on `localhost:7900` (`start.bat` / `./start.sh` / `multiagents web`). Live session: conversation, plan, shared knowledge, token stats.
+Web dashboard tại `localhost:7900` (`start.bat` / `./start.sh` / `multiagents web`). Session sống: hội thoại, plan, knowledge chung, thống kê token.
 
 ![Conversation](docs/images/dashboard-conversation.png)
 
@@ -19,9 +19,9 @@ Web dashboard on `localhost:7900` (`start.bat` / `./start.sh` / `multiagents web
 
 ![Stats](docs/images/dashboard-stats.png)
 
-## How It Works
+## Cách hoạt động
 
-One operator talks to the **orchestrator**. The orchestrator spawns workers. Workers never talk to each other over model APIs. All coordination goes through a local **broker** (HTTP + SQLite on `127.0.0.1:7899`): messages, slots, file locks, knowledge, plan, usage.
+Operator nói với **orchestrator**. Orchestrator spawn worker. Worker không gọi API model của nhau. Mọi điều phối đi qua **broker** local (HTTP + SQLite trên `127.0.0.1:7899`): message, slot, file lock, knowledge, plan, usage.
 
 ```mermaid
 flowchart TB
@@ -44,7 +44,7 @@ flowchart TB
   gemini -->|register / poll / send| broker
 ```
 
-### Team launch
+### Khởi chạy team
 
 ```mermaid
 sequenceDiagram
@@ -68,7 +68,7 @@ sequenceDiagram
   Op->>Orch: release_agent / end_session
 ```
 
-### Review loop
+### Vòng review
 
 ```mermaid
 stateDiagram-v2
@@ -82,136 +82,122 @@ stateDiagram-v2
   approved --> released: release_agent
 ```
 
-Workers stay connected until the orchestrator **releases** them. File ownership is static (`src/**` vs `tests/**`). Shared files use time-limited locks. Knowledge is session-scoped key/value so agents do not invent conflicting decisions.
+Worker giữ kết nối đến khi orchestrator **release**. Ownership file tĩnh (`src/**` vs `tests/**`). File dùng chung: lock hết hạn. Knowledge: key/value theo session, tránh agent tự bịa quyết định lệch nhau.
 
-## What It Does
+## Tính năng
 
-- **Peer discovery**: agents find each other via `list_peers`
-- **Real-time messaging**: instant for Claude (channel push), <3s for Codex (mid-turn steer), 1-3s for Gemini (piggyback)
-- **Role assignment**: `assign_role`, `rename_peer` at runtime
-- **File coordination**: exclusive locks + ownership zones prevent conflicts
-- **Task lifecycle**: `idle → working → done_pending_review → addressing_feedback → approved → released`
-- **Review loops**: `signal_done → submit_feedback → fix → re-review → approve`
-- **Shared knowledge**: persistent key-value store for architectural decisions, discovered patterns, and project context — prevents context drift across agents
-- **Persistent sessions**: survive agent restarts, full message history
-- **Web dashboard**: conversation, plan, knowledge, files, stats, studio on `localhost:7900`
-- **TUI dashboard**: real-time monitoring with 5 tabs (agents, messages, stats, plan, files)
-- **Auto-restart**: crashed agents respawn with handoff context
-- **Graceful shutdown**: broker and orchestrator kill all managed processes on exit
+- **Peer discovery**: agent tìm nhau qua `list_peers`
+- **Nhắn tin thời gian thực**: Claude tức thì (channel push), Codex <3s (mid-turn steer), Gemini 1–3s (piggyback)
+- **Gán vai**: `assign_role`, `rename_peer` lúc chạy
+- **Điều phối file**: lock độc quyền + ownership zone, tránh conflict
+- **Vòng đời task**: `idle → working → done_pending_review → addressing_feedback → approved → released`
+- **Vòng review**: `signal_done → submit_feedback → fix → re-review → approve`
+- **Knowledge chung**: store key-value bền cho quyết định kiến trúc, pattern, context — chống drift giữa agent
+- **Session bền**: sống qua restart, đủ lịch sử message
+- **Web dashboard**: hội thoại, plan, knowledge, files, stats, studio trên `localhost:7900`
+- **TUI dashboard**: monitor realtime 5 tab (agents, messages, stats, plan, files)
+- **Auto-restart**: agent crash respawn kèm handoff context
+- **Tắt sạch**: broker và orchestrator kill process mình quản khi thoát
 
-## Quick Start
+## Bắt đầu nhanh
 
-### Moving To A New Computer
+### Chuyển máy mới
 
-Yes. The repository is portable, but the machine-local runtime is not. Copy or
-clone the current repository, then install the runtime and recreate MCP config
-on the new machine. Do not copy old absolute-path config, databases, worker
-homes, or credentials.
+Có. Repo portable. Runtime trên máy thì không. Clone/copy repo, cài runtime, tạo lại MCP config trên máy mới. Không copy config path tuyệt đối cũ, database, worker home, hay credential.
 
-**Portable:** source code, `package.json`, lockfile, `docs/`, and optionally a
-reviewed team-library export without secrets.
+**Mang được:** source, `package.json`, lockfile, `docs/`, và (tuỳ chọn) export team-library đã rà, không secret.
 
-**Machine-local:** Bun, VS Code/Copilot, optional Claude Code/Codex/Gemini CLIs,
-`.vscode/mcp.json`, `.multiagents/`, SQLite state, Codex worker homes, and API
-credentials. Old sessions are not portable; create a new session on the new
-machine.
+**Gắn máy:** Bun, VS Code/Copilot, CLI Claude Code/Codex/Gemini (tuỳ), `.vscode/mcp.json`, `.multiagents/`, SQLite, Codex worker home, API credential. Session cũ không mang sang; tạo session mới trên máy mới.
 
-### Clean Install On Windows & macOS / Linux
+### Cài sạch Windows & macOS / Linux
 
-Prerequisites & Automated Setup:
+Điều kiện & setup tự động:
 
 - **Windows**:
-  - Run `setup.bat` once on a fresh machine. It installs Bun, Node.js 20+, pnpm, project dependencies (`pnpm install`), and Agent CLIs (Claude Code, Codex CLI, Gemini CLI).
-  - Launch with `start.bat`.
-  - Update with `update.bat`.
+  - Chạy `setup.bat` một lần trên máy mới. Cài Bun, Node.js 20+, pnpm, dependency (`pnpm install`), và Agent CLI (Claude Code, Codex CLI, Gemini CLI).
+  - Chạy bằng `start.bat`.
+  - Cập nhật bằng `update.bat`.
 - **macOS / Linux**:
-  - Run `./setup.sh` once to configure environment and dependencies.
-  - Launch with `./start.sh`.
-  - Update with `./update.sh`.
+  - Chạy `./setup.sh` một lần để cấu hình môi trường và dependency.
+  - Chạy bằng `./start.sh`.
+  - Cập nhật bằng `./update.sh`.
 
 ```bash
 # Windows
-.\setup.bat   # Initial setup
-.\start.bat   # Launch broker & web dashboard
-.\update.bat  # Pull code & update dependencies/CLIs
+.\setup.bat   # Cài lần đầu
+.\start.bat   # Mở broker & web dashboard
+.\update.bat  # Pull code & cập nhật dependency/CLI
 
 # macOS / Linux
-./setup.sh    # Initial setup
-./start.sh    # Launch broker & web dashboard
-./update.sh   # Pull code & update dependencies/CLIs
+./setup.sh    # Cài lần đầu
+./start.sh    # Mở broker & web dashboard
+./update.sh   # Pull code & cập nhật dependency/CLI
 ```
 
-### First Team Run
+### Chạy team lần đầu
 
-Before `create_team`, confirm the absolute target project directory, task,
-worker roster, provider/model IDs from `list_models`, and expected cost. Use the
-target project, not this repository, unless intentionally developing
-multiagents itself. A new machine normally has no old sessions; this is
-expected. `start.bat` (or `./start.sh` on macOS/Linux) starts or
-reuses the broker and web dashboard, then opens the browser. It does not
-configure MCP or create a team. Run `start.bat --check` for a
-nonmutating prerequisite check.
+Trước `create_team`, xác nhận: đường dẫn tuyệt đối project đích, task, roster worker, ID provider/model từ `list_models`, chi phí dự kiến. Dùng project đích, không dùng repo này, trừ khi đang phát triển chính multiagents. Máy mới thường không có session cũ — đúng. `start.bat` (hoặc `./start.sh` trên macOS/Linux) start hoặc tái dùng broker và web dashboard, rồi mở browser. Script không cấu hình MCP, không tạo team. `start.bat --check` chỉ kiểm tra, không đổi máy.
 
-### VS Code Copilot on Windows (This Checkout)
+### VS Code Copilot trên Windows (checkout này)
 
-1. Run `setup-copilot.bat` from this checkout. It checks prerequisites and writes workspace `.vscode/mcp.json` for `multiagents-orch`, using absolute Bun and orchestrator paths. It discovers your local model catalog without copying keys.
-2. In VS Code, open this checkout, review workspace/server trust, then use **MCP: List Servers** to start `multiagents-orch`. In extension-host mode, enter a provider key only in VS Code's masked input; leave unused providers blank. No manual environment setup is needed in this default mode.
-3. Open Copilot **Agent**, enable the server's tools, and ask: "Call `list_models` only and show available provider/model IDs. Do not create a team." This reads the local catalog without provider requests or worker charges; a missing catalog does not block MCP tool discovery.
+1. Chạy `setup-copilot.bat` từ checkout này. Kiểm tra điều kiện, ghi workspace `.vscode/mcp.json` cho `multiagents-orch`, path tuyệt đối Bun và orchestrator. Tìm catalog model local, không copy key.
+2. Mở checkout trong VS Code, rà trust workspace/server, rồi **MCP: List Servers** để start `multiagents-orch`. Extension-host: nhập provider key chỉ trong ô ẩn của VS Code; provider không dùng để trống. Mode mặc định không cần setup env tay.
+3. Mở Copilot **Agent**, bật tool của server, hỏi: "Call `list_models` only and show available provider/model IDs. Do not create a team." Đọc catalog local, không gọi provider, không tính phí worker; thiếu catalog không chặn khám phá MCP tool.
 
-Interactive `${input:...}` servers are **not forwarded to Agent Host**. Use extension-host mode, or rerun `setup-copilot.bat --credentials env` and supply real credentials separately in the launching host's environment. Setup does not toggle global settings, trust, or sampling. See the [Copilot setup guide](docs/copilot-setup.md) for checks, host limitations, and the optional `/multiagents` prompt.
+Server interactive `${input:...}` **không forward sang Agent Host**. Dùng extension-host, hoặc chạy lại `setup-copilot.bat --credentials env` và cấp credential thật trong môi trường host launch. Setup không đụng setting global, trust, hay sampling. Xem [hướng dẫn Copilot](docs/copilot-setup.md) cho checklist, hạn chế host, prompt tuỳ chọn `/multiagents`.
 
-MCP adds tools, not a model-intelligence upgrade: normal Copilot Agent already has tools. Multiagents adds separate worker models/contexts, durable coordination (locks, knowledge, status, recovery), and observability. Teams add setup, latency, and provider cost; ordinary Copilot is simpler for small tasks. `setup.bat` installs missing Bun, dependencies, Node.js, Claude Code, Codex CLI, and Gemini CLI. Use `start.bat --check` to inspect without launching. The script does not configure MCP or create a team.
+MCP thêm tool, không nâng “trí tuệ” model: Copilot Agent vốn đã có tool. Multiagents thêm worker model/context riêng, điều phối bền (lock, knowledge, status, recovery), và quan sát. Team tốn setup, latency, phí provider; Copilot thường đủ cho việc nhỏ. `setup.bat` cài Bun thiếu, dependency, Node.js, Claude Code, Codex CLI, Gemini CLI. `start.bat --check` xem mà không launch. Script không cấu hình MCP, không tạo team.
 
-### CLI Setup
+### Cài CLI
 
 ```bash
-# Install globally
+# Cài global
 bun install -g multiagents
 
-# Setup (detects CLIs, configures MCP servers, starts broker)
+# Setup (nhận CLI, cấu hình MCP, start broker)
 multiagents setup
 
-# Restart your Claude Code / Codex / Gemini sessions to load MCP tools
+# Restart Claude Code / Codex / Gemini để load MCP tool
 
 # Monitor
 multiagents dashboard
 ```
 
-### From Claude Desktop (Orchestrator)
+### Từ Claude Desktop (Orchestrator)
 
-Ask Claude to create a team:
+Nhờ Claude tạo team:
 
 > "Create a team of 3 agents: a Claude engineer, a Codex reviewer, and a Gemini designer.
 > Build a calculator web app in TypeScript."
 
-The orchestrator handles everything: spawning agents, assigning roles, creating slots, launching the dashboard, and forwarding messages between agents.
+Orchestrator lo hết: spawn agent, gán vai, tạo slot, mở dashboard, chuyển message giữa agent.
 
-## Agent Support
+## Hỗ trợ agent
 
-| Agent | Delivery Mechanism | Latency | Config |
-|-------|-------------------|---------|--------|
-| Claude Code | Channel push notifications | Instant | `~/.claude/settings.json` |
-| Codex CLI | CodexDriver (`codex app-server`) | <3s mid-turn, 3-9s between turns | `~/.codex/config.toml` |
-| Gemini CLI | Piggyback on MCP tool responses | 1-3s | `~/.gemini/settings.json` |
+| Agent | Cơ chế giao | Latency | Config |
+|-------|-------------|----------|--------|
+| Claude Code | Channel push notification | Tức thì | `~/.claude/settings.json` |
+| Codex CLI | CodexDriver (`codex app-server`) | &lt;3s mid-turn, 3–9s giữa turn | `~/.codex/config.toml` |
+| Gemini CLI | Piggyback trên MCP tool response | 1–3s | `~/.gemini/settings.json` |
 
-### Codex Integration (CodexDriver)
+### Tích hợp Codex (CodexDriver)
 
-Codex CLI uses the **app-server protocol** — a JSON-RPC stdio interface with threads, turns, and rich notifications. The orchestrator uses a **CodexDriver** that:
+Codex CLI dùng **app-server protocol** — JSON-RPC stdio, thread, turn, notification giàu. Orchestrator dùng **CodexDriver**:
 
-1. Spawns a persistent `codex app-server` process with JSON-RPC handshake
-2. Creates a thread (`thread/start`) and drives turns (`turn/start`) for task execution
-3. Injects messages mid-turn via `turn/steer` — no waiting for the current turn to finish
-4. Interrupts stuck turns via `turn/interrupt` when agents go idle for >60s
-5. Auto-approves all server-initiated requests (command execution, file changes, MCP elicitations)
-6. Tracks token usage from `turn/completed` notifications
+1. Spawn process bền `codex app-server`, handshake JSON-RPC
+2. Tạo thread (`thread/start`), chạy turn (`turn/start`)
+3. Nhét message giữa turn bằng `turn/steer` — không đợi turn hiện tại xong
+4. Cắt turn kẹt bằng `turn/interrupt` khi agent idle &gt;60s
+5. Auto-approve request server khởi (chạy lệnh, đổi file, MCP elicitation)
+6. Theo token từ notification `turn/completed`
 
-The orchestrator **drives Codex turns**: the forwarding loop polls the broker every 3s. If Codex has an active turn, messages are steered in instantly. If idle, a new turn is started via `driver.reply()`.
+Orchestrator **lái turn Codex**: vòng forward poll broker mỗi 3s. Có turn đang chạy thì steer message ngay. Idle thì `driver.reply()` mở turn mới.
 
-### Provider Model Catalog
+### Catalog model provider
 
-For VS Code on Windows, the [workspace setup](docs/copilot-setup.md) discovers your user `chatLanguageModels.json` and references it without copying it. For other launch paths, set `MULTIAGENTS_MODELS_FILE` to an external catalog path or provide a credential-free catalog at `.multiagents/chatLanguageModels.json`. Do not copy credentials into the project or commit secrets. Catalog lookup uses an explicit path first, then the environment variable, then the project default; relative paths resolve against the project directory (CLI: current directory).
+VS Code trên Windows: [setup workspace](docs/copilot-setup.md) tìm `chatLanguageModels.json` user và tham chiếu, không copy. Đường launch khác: đặt `MULTIAGENTS_MODELS_FILE` tới catalog ngoài, hoặc catalog không credential tại `.multiagents/chatLanguageModels.json`. Không copy credential vào project, không commit secret. Tra catalog: path tường minh trước, rồi biến môi trường, rồi default project; path tương đối resolve theo thư mục project (CLI: thư mục hiện tại).
 
-List a file locally without starting the broker, contacting providers, or requiring credentials:
+Liệt kê file local, không start broker, không gọi provider, không cần credential:
 
 ```bash
 bun cli.ts models --file .multiagents/chatLanguageModels.json
@@ -219,19 +205,19 @@ bun cli.ts models --file .multiagents/chatLanguageModels.json --json
 bun cli.ts models --help
 ```
 
-On this Windows setup, optional direct inspection uses `bun cli.ts models --file "C:\Users\PC\AppData\Roaming\Code\User\chatLanguageModels.json" --json`. This reads only the specified catalog, not VS Code settings or secret storage. The CLI requires `--file`; JSON contains allowlisted metadata and environment variable names, never credential values. Missing files, invalid catalogs, and invalid arguments fail with sanitized errors and a nonzero exit code.
+Trên setup Windows này, xem trực tiếp (tuỳ chọn): `bun cli.ts models --file "C:\Users\PC\AppData\Roaming\Code\User\chatLanguageModels.json" --json`. Chỉ đọc catalog chỉ định, không đọc setting VS Code hay kho secret. CLI bắt buộc `--file`; JSON chỉ metadata allowlist và tên biến môi trường, không giá trị credential. File thiếu, catalog lỗi, argument lỗi: lỗi đã sanitize, exit khác 0.
 
-- **Credentials**: VS Code `${input:chat.lm.secret...}` references cannot be resolved outside VS Code. Provider names derive environment keys: `Hollow` uses `HOLLOW_API_KEY`, `ADNX` uses `ADNX_API_KEY`. Alternatively, set the catalog's `apiKey` to a reference such as `${env:PROVIDER_API_KEY}`. Literal API keys are rejected. Default Copilot setup creates new masked VS Code inputs and maps them to safe credential environment keys; it does not read existing secret storage. For other launch paths or `--credentials env`, supply credentials in the orchestrator's environment before launching or resuming workers.
-- **Compatibility**: Only `customendpoint` providers with `apiType: "responses"` are supported. Launch requires the selected model to declare `toolCalling: true` and its credential environment variable to be present. Listing does not require credentials or tool calling. Vision, token limits, and zero-data-retention fields are unverified catalog claims, not tested capabilities or privacy guarantees.
-- **MCP discovery**: Call orchestrator `list_models` with optional `catalog_path` and `project_dir`. Use the returned `provider` and `model` exactly in `create_team.agents[].model_selection` or `add_agent.model_selection`: `{ "provider": "Hollow", "model": "<catalog model ID>", "catalog_path": ".multiagents/chatLanguageModels.json" }`. `catalog_path` is optional; `agent_type` must be `"codex"`.
-- **Runtime**: Selected models always run through Codex app-server, regardless of model ID prefixes such as `ag/`; a prefix does not select Claude or Gemini. Configuration is per worker, without changing global Codex configuration. Provider/model selection and the absolute catalog path persist for recovery and MCP `resume_session`; the catalog and environment credential must remain available. Terminal `session resume` intentionally does not support selected models; use MCP `resume_session` instead.
-- **Selected-worker isolation**: Selected workers use an owner-only, durable `CODEX_HOME` under `~/.multiagents/codex-workers/<project-session-slot hash>` (`USERPROFILE` on Windows). They do not inherit your global Codex settings, login/auth files, keyring credentials, or project `.codex/config.toml` settings. Project configuration layers are marked untrusted in the private config; task files and instructions remain available. Plugins, plugin recommendations, remote plugin synchronization, host skill discovery, and analytics are disabled. Only basic OS environment variables, worker identity/broker variables, and the selected credential variable are forwarded. Other provider credentials, inherited Codex state overrides, and Node/Bun startup injection variables are not forwarded. Use a dedicated provider credential variable, not an OS/Codex/multiagents control variable. Default, unselected agents are unchanged.
-- **Private state lifecycle**: Generated config contains environment key names, never credential values. Thread history stays in the same private home across crashes and resumes; process exit does not delete it. Delete a worker home manually only after its session is no longer needed; deletion loses native thread history. Launch fails if private state would be inside the task repository or owner-only permissions cannot be established. Unix uses directory/file modes `0700`/`0600`; Windows restricts the worker directory ACL to the current user. Machine-managed Codex policies still apply.
-- **Offline native regression**: Set `MULTIAGENTS_TEST_CODEX_EXECUTABLE` to an installed native `codex`/`codex.exe`, then run `bun test tests/selected-codex-native.test.ts`. Without that explicit opt-in the test skips. It uses synthetic user/project settings outside the repository and only `initialize`/`config/read`, never threads, turns, or provider requests. Native effective routing and MCP isolation were verified with Codex CLI 0.153.4.
+- **Credential**: `${input:chat.lm.secret...}` của VS Code không resolve ngoài VS Code. Tên provider suy ra key env: `Hollow` → `HOLLOW_API_KEY`, `ADNX` → `ADNX_API_KEY`. Hoặc `apiKey` catalog dạng `${env:PROVIDER_API_KEY}`. API key literal bị từ chối. Copilot setup mặc định tạo input ẩn mới của VS Code, map sang key env an toàn; không đọc kho secret sẵn. Launch khác hoặc `--credentials env`: cấp credential trong môi trường orchestrator trước khi launch/resume worker.
+- **Tương thích**: Chỉ provider `customendpoint` với `apiType: "responses"`. Launch cần model khai `toolCalling: true` và biến env credential có mặt. List không cần credential hay tool calling. Vision, token limit, zero-data-retention: claim catalog, chưa test, không phải cam kết privacy.
+- **MCP discovery**: Gọi orchestrator `list_models` với `catalog_path` và `project_dir` tuỳ chọn. Dùng đúng `provider` và `model` trả về trong `create_team.agents[].model_selection` hoặc `add_agent.model_selection`: `{ "provider": "Hollow", "model": "<catalog model ID>", "catalog_path": ".multiagents/chatLanguageModels.json" }`. `catalog_path` tuỳ chọn; `agent_type` phải `"codex"`.
+- **Runtime**: Model đã chọn luôn chạy qua Codex app-server, bất kể prefix ID kiểu `ag/`; prefix không chọn Claude hay Gemini. Config theo worker, không sửa Codex global. Provider/model và path catalog tuyệt đối persist cho recovery và MCP `resume_session`; catalog và env credential phải còn. Terminal `session resume` cố ý không hỗ trợ model đã chọn; dùng MCP `resume_session`.
+- **Cách ly worker đã chọn**: Worker đã chọn dùng `CODEX_HOME` bền, chỉ owner, dưới `~/.multiagents/codex-workers/<project-session-slot hash>` (`USERPROFILE` trên Windows). Không kế thừa setting Codex global, file login/auth, keyring, hay `.codex/config.toml` của project. Layer config project đánh untrusted trong config riêng; file task và instruction vẫn có. Plugin, gợi ý plugin, sync plugin remote, host skill discovery, analytics: tắt. Chỉ forward biến OS cơ bản, identity/broker worker, và biến credential đã chọn. Credential provider khác, override state Codex kế thừa, biến inject Node/Bun lúc start: không forward. Dùng biến credential provider riêng, không dùng biến điều khiển OS/Codex/multiagents. Agent mặc định, chưa chọn model: không đổi.
+- **Vòng đời state riêng**: Config sinh ra chứa tên key env, không giá trị credential. Lịch sử thread nằm cùng private home qua crash và resume; thoát process không xoá. Xoá worker home tay chỉ sau khi session hết cần; xoá mất lịch sử thread native. Launch fail nếu private state nằm trong repo task hoặc không lập được quyền chỉ-owner. Unix: mode thư mục/file `0700`/`0600`; Windows: ACL thư mục worker hạn chế user hiện tại. Policy Codex do máy quản vẫn áp.
+- **Regression native offline**: Đặt `MULTIAGENTS_TEST_CODEX_EXECUTABLE` tới `codex`/`codex.exe` đã cài, rồi `bun test tests/selected-codex-native.test.ts`. Không opt-in tường minh thì skip. Dùng setting user/project synthetic ngoài repo, chỉ `initialize`/`config/read`, không thread, turn, hay gọi provider. Routing native hiệu lực và cách ly MCP đã verify với Codex CLI 0.153.4.
 
-## Task State Machine
+## Máy trạng thái task
 
-Every agent slot has a `task_state` that governs the review/approval workflow:
+Mỗi slot agent có `task_state` điều khiển vòng review/approve:
 
 ```
                     ┌──────────── (reviewer/QA roles) ────────────┐
@@ -242,225 +228,225 @@ idle ──► working ──► done_pending_review ──► addressing_feedba
                          └──────────► approved ─────────────────────┘
 ```
 
-- **idle → working**: Auto-transitions when agent calls `set_summary` or produces first output
-- **working → done_pending_review**: Agent calls `signal_done`
-- **working → approved**: Reviewer/QA agents auto-approve on `signal_done` (they don't need external review)
-- **done_pending_review → addressing_feedback**: Reviewer calls `submit_feedback(actionable=true)`
-- **addressing_feedback → done_pending_review**: Agent fixes issues and calls `signal_done` again
-- **done_pending_review → approved**: Reviewer calls `approve`
-- **approved → released**: Orchestrator calls `release_agent`
+- **idle → working**: tự chuyển khi agent gọi `set_summary` hoặc có output đầu
+- **working → done_pending_review**: agent gọi `signal_done`
+- **working → approved**: reviewer/QA tự approve khi `signal_done` (không cần review ngoài)
+- **done_pending_review → addressing_feedback**: reviewer gọi `submit_feedback(actionable=true)`
+- **addressing_feedback → done_pending_review**: agent sửa rồi `signal_done` lại
+- **done_pending_review → approved**: reviewer gọi `approve`
+- **approved → released**: orchestrator gọi `release_agent`
 
-Agents **cannot disconnect** until explicitly released. This ensures the review loop completes.
+Agent **không tự disconnect** đến khi được release tường minh. Vòng review phải xong.
 
-## MCP Tools (Available to All Agents)
+## Công cụ MCP (mọi agent)
 
-| Tool | Description |
-|------|-------------|
-| `list_peers` | Discover agents (filter by scope, type) |
-| `send_message` | Send text message to a peer |
-| `check_messages` | Poll for new messages |
-| `set_summary` | Update your status (visible to peers and dashboard) |
-| `check_team_status` | See all agents: roles, states, summaries |
-| `get_plan` / `update_plan` | Track team progress against the plan |
-| `signal_done` | Signal task completion (triggers review) |
-| `submit_feedback` | Send review feedback (actionable or informational) |
-| `approve` | Approve a teammate's work |
-| `assign_role` / `rename_peer` | Assign roles and names |
-| `acquire_file` / `release_file` | File lock management |
-| `view_file_locks` | See active locks and ownership zones |
-| `get_history` | Query session message history |
-| `store_knowledge` | Store shared knowledge (decisions, patterns, conventions) |
-| `query_knowledge` | Query knowledge entries by key or category |
-| `remove_knowledge` | Remove outdated knowledge entries |
+| Tool | Mô tả |
+|------|--------|
+| `list_peers` | Tìm agent (lọc scope, type) |
+| `send_message` | Gửi text tới peer |
+| `check_messages` | Poll message mới |
+| `set_summary` | Cập nhật status (peer và dashboard thấy) |
+| `check_team_status` | Xem mọi agent: vai, state, summary |
+| `get_plan` / `update_plan` | Theo tiến độ plan |
+| `signal_done` | Báo xong task (kích review) |
+| `submit_feedback` | Gửi feedback review (actionable hoặc informational) |
+| `approve` | Approve việc teammate |
+| `assign_role` / `rename_peer` | Gán vai và tên |
+| `acquire_file` / `release_file` | Quản lý file lock |
+| `view_file_locks` | Xem lock đang có và ownership zone |
+| `get_history` | Query lịch sử message session |
+| `store_knowledge` | Lưu knowledge chung (quyết định, pattern, convention) |
+| `query_knowledge` | Query knowledge theo key hoặc category |
+| `remove_knowledge` | Xoá knowledge cũ |
 
-## Orchestrator Tools (Claude Desktop / VS Code Copilot)
+## Công cụ Orchestrator (Claude Desktop / VS Code Copilot)
 
-| Tool | Description |
-|------|-------------|
-| `list_models` | List safe provider/model metadata from a local catalog (optional catalog_path, project_dir) |
-| `create_team` | Spawn a team with roles, file ownership, and a plan |
-| `get_team_status` | Live status of all agents with completion tracking |
-| `broadcast_to_team` | Message all agents at once |
-| `direct_agent` | Message a specific agent by name/role |
-| `add_agent` / `remove_agent` | Add or remove agents mid-session |
-| `control_session` | Pause/resume all or individual agents |
-| `adjust_guardrail` | View or change session limits |
-| `release_agent` / `release_all` | Release agents to disconnect |
-| `get_session_log` | Full message history |
-| `list_sessions` / `resume_session` | List and resume previous sessions |
-| `end_session` / `delete_session` | Archive or permanently delete |
-| `cleanup_dead_slots` | Remove stale disconnected slots |
-| `get_guide` | Built-in documentation and tutorials |
+| Tool | Mô tả |
+|------|--------|
+| `list_models` | List metadata provider/model an toàn từ catalog local (catalog_path, project_dir tuỳ chọn) |
+| `create_team` | Spawn team với vai, ownership file, plan |
+| `get_team_status` | Status sống mọi agent, theo dõi hoàn thành |
+| `broadcast_to_team` | Nhắn mọi agent cùng lúc |
+| `direct_agent` | Nhắn một agent theo tên/vai |
+| `add_agent` / `remove_agent` | Thêm/bớt agent giữa session |
+| `control_session` | Pause/resume tất cả hoặc từng agent |
+| `adjust_guardrail` | Xem hoặc đổi giới hạn session |
+| `release_agent` / `release_all` | Release agent để disconnect |
+| `get_session_log` | Đủ lịch sử message |
+| `list_sessions` / `resume_session` | List và resume session cũ |
+| `end_session` / `delete_session` | Archive hoặc xoá vĩnh viễn |
+| `cleanup_dead_slots` | Gỡ slot disconnect cũ |
+| `get_guide` | Tài liệu và tutorial built-in |
 
-## Sessions
+## Session
 
-Sessions persist across agent restarts:
+Session sống qua restart agent:
 
 ```bash
-multiagents session create "Auth Feature"    # Create session
-multiagents session list                     # List all sessions
-multiagents session resume auth-feature      # Resume (respawns agents)
-multiagents session pause                    # Pause all agents
-multiagents session delete auth-feature      # Permanently delete
+multiagents session create "Auth Feature"    # Tạo session
+multiagents session list                     # List mọi session
+multiagents session resume auth-feature      # Resume (respawn agent)
+multiagents session pause                    # Pause mọi agent
+multiagents session delete auth-feature      # Xoá vĩnh viễn
 ```
 
-## File Coordination
+## Điều phối file
 
-**Ownership Zones** (static, zero overhead):
+**Ownership zone** (tĩnh, không overhead):
 ```
-create_team assigns: Engineer owns src/**, Reviewer owns tests/**
+create_team gán: Engineer owns src/**, Reviewer owns tests/**
 ```
 
-**File Locks** (dynamic, for shared files):
+**File lock** (động, file dùng chung):
 ```
 Engineer: acquire_file("package.json", "adding dependency")
-→ Lock acquired, auto-expires in 5 minutes
+→ Lock được, tự hết hạn sau 5 phút
 ```
 
-## Shared Knowledge Store
+## Knowledge store chung
 
-Agents share a persistent key-value store to prevent context drift — the #1 failure mode in multi-agent systems.
+Agent chia store key-value bền, chống context drift — lỗi số 1 hệ đa agent.
 
 ```
 Engineer:  store_knowledge("auth-pattern", "JWT with refresh rotation", category="decision")
-Designer:  query_knowledge()  →  sees the decision before designing auth UI
-Reviewer:  query_knowledge(category="decision")  →  reviews against team decisions
+Designer:  query_knowledge()  →  thấy quyết định trước khi thiết kế auth UI
+Reviewer:  query_knowledge(category="decision")  →  review theo quyết định team
 ```
 
-**Categories**: `decision`, `convention`, `discovery`, `blocker`, `context`
+**Category**: `decision`, `convention`, `discovery`, `blocker`, `context`
 
-Knowledge persists across agent restarts and is scoped to the session. Agents are instructed to query knowledge on startup and store decisions as they work.
+Knowledge persist qua restart agent, scope theo session. Agent được bảo query knowledge lúc start, store quyết định khi làm.
 
-## Guardrails
+## Guardrail
 
-Session monitoring stats and enforced limits:
+Thống kê monitor session và giới hạn bắt buộc:
 
-| Guardrail | Default | Scope | Action |
-|-----------|---------|-------|--------|
-| Restart Limit | 5 | Per agent | Stop (prevents flapping) |
+| Guardrail | Mặc định | Phạm vi | Hành động |
+|-----------|----------|---------|-----------|
+| Restart Limit | 5 | Per agent | Stop (chống flap) |
 | Session Duration | Monitor | Session | Observe |
 | Total Messages | Monitor | Session | Observe |
 | Active Agents | Monitor | Session | Observe |
 | Longest Idle | Monitor | Per agent | Observe |
 
-Adjustable from the TUI dashboard (+/- keys) or via `adjust_guardrail` tool.
+Chỉnh từ TUI dashboard (phím +/-) hoặc tool `adjust_guardrail`.
 
-## Web Dashboard
+## Web dashboard
 
 ```bash
 multiagents web [session-id]
 ```
 
-Real-time web dashboard on `localhost:7900` with live WebSocket updates. Auto-opens in browser when a team is created via the orchestrator. 6-tab interface:
+Dashboard web realtime trên `localhost:7900`, cập nhật WebSocket. Tự mở browser khi team tạo qua orchestrator. 6 tab:
 
-- **Agents**: agent cards with connection status, task state, role, summaries, token usage
-- **Messages**: live message feed with type badges and sender names
-- **Plan**: task progress with completion bar and assignee labels
-- **Knowledge**: shared knowledge entries with categories and provenance
-- **Files**: file locks and ownership zones
-- **Stats**: session metrics (connected agents, working, tokens) and guardrail bars
+- **Agents**: thẻ agent, trạng thái kết nối, task state, vai, summary, token
+- **Messages**: feed message sống, badge type, tên sender
+- **Plan**: tiến độ task, thanh hoàn thành, nhãn assignee
+- **Knowledge**: entry knowledge chung, category, provenance
+- **Files**: file lock và ownership zone
+- **Stats**: metric session (agent connected, working, token) và thanh guardrail
 
-Dark theme, responsive layout, keyboard shortcuts (`1-6` to switch tabs).
+Theme tối, layout responsive, shortcut (`1-6` đổi tab).
 
-## TUI Dashboard
+## TUI dashboard
 
 ```bash
 multiagents dashboard [session-id]
 ```
 
-5-tab terminal interface (same data, ANSI rendering):
-- **[1] Agents**: connection status, task state, summaries
-- **[2] Messages**: auto-scrolling message log with filtering
-- **[3] Stats**: guardrail monitoring and adjustment
-- **[4] Plan**: progress tracking with completion percentage
-- **[5] Files**: file locks and ownership zones
+Giao diện terminal 5 tab (cùng data, ANSI):
+- **[1] Agents**: trạng thái kết nối, task state, summary
+- **[2] Messages**: log message tự cuộn, lọc
+- **[3] Stats**: monitor và chỉnh guardrail
+- **[4] Plan**: tiến độ, phần trăm hoàn thành
+- **[5] Files**: file lock và ownership zone
 
-Keys: `1-5` switch tabs, `j/k` scroll, `p` pause all, `r` resume all, `+/-` adjust guardrails, `q` quit.
+Phím: `1-5` đổi tab, `j/k` cuộn, `p` pause tất, `r` resume tất, `+/-` chỉnh guardrail, `q` thoát.
 
-## CLI Commands
+## Lệnh CLI
 
 ```
-multiagents setup                     Interactive setup wizard
+multiagents setup                     Wizard setup tương tác
 multiagents web [session-id]         Web dashboard (localhost:7900)
 multiagents dashboard [session-id]    TUI dashboard
-multiagents session <sub>             Session management (create/list/resume/pause/delete)
-multiagents send <target> <msg>       Send message to agent
-multiagents peers                     List connected agents
-multiagents status                    Broker health + peers
-multiagents broker start|stop|status  Manage broker daemon
-multiagents install-mcp               Configure MCP servers
-multiagents help [command]            Detailed help
+multiagents session <sub>             Quản lý session (create/list/resume/pause/delete)
+multiagents send <target> <msg>       Gửi message tới agent
+multiagents peers                     List agent đang kết nối
+multiagents status                    Sức khoẻ broker + peers
+multiagents broker start|stop|status  Quản lý broker daemon
+multiagents install-mcp               Cấu hình MCP server
+multiagents help [command]            Help chi tiết
 ```
 
-## Architecture
+## Kiến trúc thư mục
 
 ```
 multiagents/
-├── broker.ts               SQLite broker daemon (sessions, slots, locks, messages, knowledge, guardrails)
-├── server.ts               MCP server entry point (dispatches to adapter by --agent-type)
-├── cli.ts                  CLI entry point
+├── broker.ts               Daemon broker SQLite (sessions, slots, locks, messages, knowledge, guardrails)
+├── server.ts               Entry MCP server (dispatch adapter theo --agent-type)
+├── cli.ts                  Entry CLI
 ├── shared/
-│   ├── types.ts            Type definitions (Peer, Slot, Session, Message, TaskState...)
-│   ├── broker-client.ts    HTTP client for broker API
-│   ├── constants.ts        Ports, intervals, thresholds
-│   ├── summarize.ts        Auto-summary generation
-│   └── utils.ts            Shared utilities
+│   ├── types.ts            Type (Peer, Slot, Session, Message, TaskState...)
+│   ├── broker-client.ts    HTTP client API broker
+│   ├── constants.ts        Port, interval, ngưỡng
+│   ├── summarize.ts        Sinh summary tự động
+│   └── utils.ts            Utility chung
 ├── adapters/
-│   ├── base-adapter.ts     Abstract MCP adapter (tools, registration, polling)
-│   ├── claude-adapter.ts   Claude Code adapter (channel push delivery)
-│   ├── codex-adapter.ts    Codex adapter (piggyback + file inbox delivery)
-│   ├── gemini-adapter.ts   Gemini adapter (piggyback + file inbox delivery)
-│   └── role-practices.ts   Role-specific best practices injection
+│   ├── base-adapter.ts     Adapter MCP trừu tượng (tool, register, poll)
+│   ├── claude-adapter.ts   Adapter Claude Code (channel push)
+│   ├── codex-adapter.ts    Adapter Codex (piggyback + file inbox)
+│   ├── gemini-adapter.ts   Adapter Gemini (piggyback + file inbox)
+│   └── role-practices.ts   Inject best practice theo vai
 ├── orchestrator/
-│   ├── orchestrator-server.ts  Orchestrator MCP server (team management)
-│   ├── codex-driver.ts     CodexDriver: persistent codex app-server via JSON-RPC (steer/interrupt)
-│   ├── launcher.ts         Agent spawning (CLI args, MCP configs, CodexDriver)
-│   ├── monitor.ts          Process monitoring (stdout parsing, token tracking)
-│   ├── recovery.ts         Crash recovery (flap detection, respawn with context)
-│   ├── progress.ts         Team status aggregation
+│   ├── orchestrator-server.ts  MCP orchestrator (quản team)
+│   ├── codex-driver.ts     CodexDriver: codex app-server bền qua JSON-RPC (steer/interrupt)
+│   ├── launcher.ts         Spawn agent (CLI args, MCP config, CodexDriver)
+│   ├── monitor.ts          Monitor process (parse stdout, token)
+│   ├── recovery.ts         Phục hồi crash (phát hiện flap, respawn kèm context)
+│   ├── progress.ts         Gom status team
 │   ├── session-control.ts  Pause/resume/broadcast
-│   ├── guardrails.ts       Guardrail enforcement
-│   └── guide.ts            Built-in documentation
+│   ├── guardrails.ts       Áp guardrail
+│   └── guide.ts            Tài liệu built-in
 └── cli/
-    ├── commands.ts         CLI command router
-    ├── models.ts           Broker-free provider model listing
-    ├── dashboard.ts        TUI dashboard (ANSI, no dependencies)
-    ├── session.ts          Session management commands
-    ├── setup.ts            Interactive setup wizard
-    └── install-mcp.ts      MCP server configuration
+    ├── commands.ts         Router lệnh CLI
+    ├── models.ts           List model provider, không cần broker
+    ├── dashboard.ts        TUI dashboard (ANSI, không dependency)
+    ├── session.ts          Lệnh quản lý session
+    ├── setup.ts            Wizard setup tương tác
+    └── install-mcp.ts      Cấu hình MCP server
 ```
 
-## Process Lifecycle
+## Vòng đời process
 
-### Graceful Shutdown
-- **Broker** (`SIGINT`/`SIGTERM`): kills all registered peer processes, closes SQLite cleanly
-- **Orchestrator** (`SIGINT`/`SIGTERM`): kills all managed agent processes and CodexDriver instances
-- **Adapters** (`SIGINT`/`SIGTERM`): unregister from broker, release file locks
+### Tắt sạch
+- **Broker** (`SIGINT`/`SIGTERM`): kill mọi process peer đã đăng ký, đóng SQLite sạch
+- **Orchestrator** (`SIGINT`/`SIGTERM`): kill mọi process agent quản lý và instance CodexDriver
+- **Adapters** (`SIGINT`/`SIGTERM`): huỷ đăng ký broker, nhả file lock
 
-### Orphan Prevention
-- Broker's `cleanStalePeers` runs every 30s: removes dead peer records, kills orphan processes without sessions
-- CodexDriver uses `.multiagents/.driver-mode` sentinel file to prevent internal MCP adapters from creating ghost slots
-- Session delete/end handlers kill both regular processes and CodexDriver instances
-- Flap detection stops auto-restart after 3 crashes in 5 minutes
+### Chống orphan
+- Broker `cleanStalePeers` mỗi 30s: gỡ peer chết, kill process orphan không session
+- CodexDriver dùng file sentinel `.multiagents/.driver-mode` để adapter MCP nội bộ không tạo ghost slot
+- Handler session delete/end kill cả process thường và CodexDriver
+- Phát hiện flap: dừng auto-restart sau 3 crash trong 5 phút
 
-## Environment Variables
+## Biến môi trường
 
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `MULTIAGENTS_PORT` | `7899` | Broker HTTP port |
-| `MULTIAGENTS_MODELS_FILE` | `.multiagents/chatLanguageModels.json` | External provider catalog path; explicit catalog paths take precedence |
-| `MULTIAGENTS_DB` | `~/.multiagents/peers.db` | SQLite database path |
-| `MULTIAGENTS_SESSION` | - | Session ID (set by orchestrator) |
-| `MULTIAGENTS_SLOT` | - | Slot ID (set by orchestrator) |
-| `MULTIAGENTS_ROLE` | - | Agent role (set by orchestrator) |
-| `MULTIAGENTS_NAME` | - | Agent display name (set by orchestrator) |
-| `MULTIAGENTS_DRIVER_MODE` | - | Skip adapter registration (set by CodexDriver) |
+| Biến | Mặc định | Mục đích |
+|------|----------|----------|
+| `MULTIAGENTS_PORT` | `7899` | Port HTTP broker |
+| `MULTIAGENTS_MODELS_FILE` | `.multiagents/chatLanguageModels.json` | Path catalog provider ngoài; path catalog tường minh ưu tiên hơn |
+| `MULTIAGENTS_DB` | `~/.multiagents/peers.db` | Path SQLite |
+| `MULTIAGENTS_SESSION` | - | Session ID (orchestrator set) |
+| `MULTIAGENTS_SLOT` | - | Slot ID (orchestrator set) |
+| `MULTIAGENTS_ROLE` | - | Vai agent (orchestrator set) |
+| `MULTIAGENTS_NAME` | - | Tên hiển thị agent (orchestrator set) |
+| `MULTIAGENTS_DRIVER_MODE` | - | Bỏ đăng ký adapter (CodexDriver set) |
 
-## Requirements
+## Yêu cầu
 
-- [Bun](https://bun.sh/) runtime (v1.1+)
-- At least one of: Claude Code, Codex CLI, or Gemini CLI
+- Runtime [Bun](https://bun.sh/) (v1.1+)
+- Ít nhất một trong: Claude Code, Codex CLI, hoặc Gemini CLI
 
-## License
+## Giấy phép
 
 MIT
