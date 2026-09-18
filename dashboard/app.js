@@ -674,7 +674,7 @@ if (typeof window !== "undefined") {
       const groups = { needsInput: [], toReview: [], active: [], idle: [] };
       for (const slot of slots || []) {
         const state = slot.task_state || "idle";
-        if (state === "blocked" || slot.paused === 1) {
+        if (state === "blocked" || slot.paused) {
           groups.needsInput.push(slot);
         } else if (state === "done_pending_review") {
           groups.toReview.push(slot);

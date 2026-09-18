@@ -93,7 +93,7 @@ const TOOLS = [
       properties: {
         to_id: {
           type: "string" as const,
-          description: "Target peer ID (from list_peers).",
+          description: 'Target peer ID from list_peers, or "operator" for the human.',
         },
         message: {
           type: "string" as const,
@@ -1591,6 +1591,9 @@ export abstract class BaseAdapter {
 
     switch (msg.msg_type) {
       case "chat":
+        if (msg.from_id === "operator") {
+          return `HUMAN OPERATOR: ${msg.text}\nReply with send_message(to_id="operator", message=your reply).`;
+        }
         return `${name}${role}: ${msg.text}`;
       case "role_assignment":
         return `ROLE ASSIGNED: ${msg.text}`;

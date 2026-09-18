@@ -235,6 +235,7 @@ export interface SendMessageResult {
   ok: boolean;
   error?: string;
   warning?: string;
+  id?: number;
 }
 
 export interface PollMessagesRequest {

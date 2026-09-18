@@ -6,16 +6,17 @@
   <title>multiagents dashboard</title>
   <style>
     :root {
-      --bg: #0f1117;
-      --surface: #0f172a;
-      --surface2: #162036;
-      --surface3: #1e2942;
-      --border: #1e293b;
-      --border-hover: #334155;
+      /* Obsidian palette unified with app.css (contract: #0f1117) */
+      --bg: #121314;
+      --surface: #18191b;
+      --surface2: #1f2023;
+      --surface3: #26282c;
+      --border: #2a2b2f;
+      --border-hover: #3e4046;
       --border-focus: #38bdf8;
-      --text: #f8fafc;
-      --text-dim: #94a3b8;
-      --text-muted: #64748b;
+      --text: #f4f4f5;
+      --text-dim: #a1a1aa;
+      --text-muted: #71717a;
       --accent: #38bdf8;
       --accent-soft: rgba(56, 189, 248, 0.12);
       --accent-border: rgba(56, 189, 248, 0.28);
@@ -40,7 +41,7 @@
       font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       background: var(--bg);
       color: var(--text);
-      font-size: 13.5px;
+      font-size: 14px;
       line-height: 1.5;
       height: 100vh;
       overflow: hidden;
@@ -81,6 +82,8 @@
       letter-spacing: -0.02em;
       color: #ffffff;
     }
+    #ws-status { font-size: 13px; font-weight: 500; }
+    #agent-count, #uptime { font-size: 13px; color: var(--text-dim); }
     .header-session {
       font-size: 12px;
       font-weight: 500;
@@ -160,7 +163,7 @@
       font-weight: 600;
     }
     .tab-badge {
-      font-size: 10.5px;
+      font-size: 12px;
       font-weight: 600;
       padding: 1px 6px;
       border-radius: 999px;
@@ -189,7 +192,7 @@
     .card {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 10px;
+      border-radius: 12px;
       margin-bottom: 14px;
       overflow: hidden;
     }
@@ -283,7 +286,7 @@
       border-color: var(--border-hover);
     }
     .nav-switch-key {
-      font-size: 10px;
+      font-size: 11px;
       padding: 1px 5px;
       border-radius: 4px;
       background: var(--bg);
@@ -333,21 +336,13 @@
       font-size: 12.5px;
     }
     .session-nav-meta {
-      font-size: 10.5px;
+      font-size: 12px;
       color: var(--text-muted);
       display: flex;
       align-items: center;
       gap: 6px;
     }
 
-    /* --- Center Feed Area --- */
-    .conversation-center {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      min-width: 0;
-      height: calc(100vh - 120px);
-    }
     .conversation-header-row {
       display: flex;
       align-items: baseline;
@@ -444,9 +439,10 @@
       align-items: flex-start;
       padding: 10px 14px;
       border: 1px solid var(--border);
-      border-radius: 8px;
+      border-radius: 16px;
       background: var(--surface);
       transition: border-color 0.12s ease;
+      max-width: min(78%, 640px);
     }
     .timeline-entry:hover {
       border-color: var(--border-hover);
@@ -568,7 +564,7 @@
       border-radius: 6px;
       color: var(--text-dim);
       cursor: pointer;
-      font-size: 11px;
+      font-size: 12px;
       font-weight: 500;
       padding: 6px 4px;
       min-height: 32px;
@@ -643,8 +639,8 @@
 
     .agent-name-collapsed {
       display: block;
-      max-width: 64px;
-      font-size: 11px;
+      max-width: 68px;
+      font-size: 12px;
       font-weight: 600;
       color: var(--text);
       white-space: nowrap;
@@ -653,7 +649,7 @@
       text-align: center;
     }
     .agent-role-mini {
-      font-size: 9.5px;
+      font-size: 12px;
       font-weight: 600;
       letter-spacing: 0.02em;
       color: var(--text-muted);
@@ -661,18 +657,18 @@
       border: 1px solid var(--border);
       padding: 1px 5px;
       border-radius: 4px;
-      max-width: 64px;
+      max-width: 68px;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
     .workflow-mini-pill {
-      font-size: 9.5px;
+      font-size: 12px;
       font-weight: 600;
       line-height: 1;
       padding: 2px 6px;
       border-radius: 999px;
-      max-width: 64px;
+      max-width: 68px;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -747,7 +743,7 @@
       padding: 6px 4px;
     }
     .token-col { text-align: center; }
-    .token-col dt { font-size: 9px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+    .token-col dt { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
     .token-col dd {
       margin: 2px 0 0;
       font-size: 11px;
@@ -876,7 +872,7 @@
       border-radius: 6px;
       padding: 8px;
     }
-    .usage-counters dt { color: var(--text-muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; }
+    .usage-counters dt { color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
     .usage-counters dd {
       margin: 3px 0 0;
       font-size: 14px;
@@ -897,7 +893,7 @@
     .knowledge-item { padding: 10px 14px; border-bottom: 1px solid var(--border); }
     .knowledge-key { font-weight: 600; color: var(--accent); font-size: 13px; }
     .knowledge-cat {
-      font-size: 10px; padding: 2px 6px; border-radius: 4px; margin-left: 6px;
+      font-size: 11px; padding: 2px 6px; border-radius: 4px; margin-left: 6px;
       background: var(--purple-soft); color: var(--purple);
       text-transform: uppercase; font-weight: 600;
     }
@@ -949,7 +945,7 @@
     }
     .picker-search::placeholder { color: var(--text-muted); }
     .picker-list { overflow-y: auto; flex: 1; padding: 6px; }
-    .picker-group { padding: 8px 10px 4px; font-size: 10.5px; font-weight: 700;
+    .picker-group { padding: 8px 10px 4px; font-size: 12px; font-weight: 700;
       color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
     .picker-item {
       display: flex; align-items: center; gap: 10px;
@@ -1002,14 +998,14 @@
     <div class="header">
       <div class="header-left">
         <span class="conn-dot" id="conn-dot"></span>
-        <span class="header-title">multiagents</span>
+        <span class="header-title">AgentsRoom</span>
         <button type="button" class="header-session" id="session-name" title="Chọn phiên làm việc">Đang kết nối… &#9662;</button>
       </div>
       <div class="header-right">
         <span id="session-status-badge" class="badge" style="display:none"></span>
         <span id="agent-count"></span>
         <span id="uptime"></span>
-        <span id="ws-status" style="font-size:11px"></span>
+        <span id="ws-status"></span>
       </div>
     </div>
 
@@ -1020,7 +1016,7 @@
       <button type="button" class="tab" data-tab="knowledge">Knowledge <span class="tab-badge" id="badge-knowledge">0</span></button>
       <button type="button" class="tab" data-tab="files">Files <span class="tab-badge" id="badge-files">0</span></button>
       <button type="button" class="tab" data-tab="stats">Stats <span class="tab-badge" id="badge-stats"></span></button>
-      <button class="tab studio-tab" type="button" data-tab="studio" aria-controls="panel-studio">Studio <span class="tab-badge" id="badge-studio">new</span></button>
+      <button class="tab studio-tab" type="button" data-tab="studio" aria-controls="panel-studio">Studio <span class="tab-badge" id="badge-studio"></span></button>
     </div>
 
     <!-- Tab panels -->
@@ -1271,7 +1267,7 @@
       const el = document.getElementById("panel-agents");
       if (!el) return;
       if (!state.slots.length) {
-        el.innerHTML = '<div class="empty"><div class="empty-icon">~</div>No agents in session</div>';
+        el.innerHTML = '<div class="empty"><div class="empty-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div><span>Chưa có dữ liệu worker</span></div>';
         return;
       }
       const peerMap = new Map((state.peers || []).map(p => [p.id, p]));
@@ -1329,13 +1325,20 @@
 
     function patchTimeline(feed, messages, slotMap) {
       const keep = new Set(messages.map(m => String(m.id)));
-      for (const row of [...feed.children]) if (!keep.has(row.dataset.messageId)) row.remove();
+      for (const row of [...feed.children]) {
+        if (!keep.has(row.dataset.messageId)) row.remove();
+      }
       const rows = new Map([...feed.children].map(row => [row.dataset.messageId, row]));
       for (const [index, m] of messages.entries()) {
         const key = String(m.id);
         const fromSlot = slotMap.get(m.from_slot_id);
-        const from = fromSlot?.display_name || m.from_id || "Không có ID người gửi";
-        const to = slotMap.get(m.to_slot_id)?.display_name || m.to_id || "Nhóm";
+        const isOperator = m.from_id === "operator";
+        const from = isOperator ? "Bạn" : (fromSlot?.display_name || m.from_id || "Không có ID người gửi");
+        const to = m.to_id === "all-workers" || m._broadcast
+          ? "Tất cả worker"
+          : m.to_id === "operator"
+            ? "Bạn"
+            : (slotMap.get(m.to_slot_id)?.display_name || m.to_id || "Nhóm");
         const version = JSON.stringify([m, from, to]);
         let row = rows.get(key);
         if (!row) {
@@ -1348,7 +1351,9 @@
         const open = row.querySelector("details")?.open;
         const isSteer = m.msg_type === "steer" || (m.text || "").includes("MID-TURN STEER");
         const isSystem = ["system", "control", "team_change"].includes(m.msg_type);
-        row.className = "timeline-entry" + (isSteer ? " timeline-entry--steer" : isSystem ? " timeline-entry--system" : "");
+        row.className = "timeline-entry" +
+          (isOperator ? " timeline-entry--operator" : " timeline-entry--worker") +
+          (isSteer ? " timeline-entry--steer" : isSystem ? " timeline-entry--system" : "");
 
         const heading = document.createElement("header"); heading.className = "timeline-heading";
         if (isSteer) {
@@ -1358,11 +1363,9 @@
           heading.append(steerBadge);
         }
         const sender = document.createElement("span"); sender.className = "timeline-sender"; sender.textContent = from;
-        const route = document.createElement("span"); route.className = "timeline-route"; route.textContent = "→ " + to;
-        const type = document.createElement("span"); type.className = "badge " + (isSteer ? "steer-status-tag tag-success" : isSystem ? "badge-system" : "badge-idle"); type.textContent = isSteer ? "Injected" : m.msg_type;
         const time = document.createElement("time"); const date = new Date(m.sent_at);
         time.textContent = Number.isNaN(date.getTime()) ? "" : date.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-        heading.append(sender, route, type, time);
+        heading.append(sender, time);
 
         const body = document.createElement("div"); body.className = "timeline-body" + (isSteer ? " steer-body" : "");
         const rawText = m.text || "";
@@ -1390,9 +1393,29 @@
 
         const avatar = document.createElement("div");
         avatar.className = "msg-avatar";
-        const brand = typeof modelInfo === "function" ? modelInfo(fromSlot || { display_name: from }) : { brand: "AI", icon: "" };
-        avatar.title = brand.brand;
-        avatar.innerHTML = brand.icon;
+        if (isOperator) {
+          avatar.title = "Người";
+          avatar.textContent = "N";
+        } else {
+          const brand = typeof modelInfo === "function" ? modelInfo(fromSlot || { display_name: from }) : { brand: "AI", icon: "" };
+          avatar.title = brand.brand;
+          avatar.innerHTML = brand.icon;
+        }
+        const who = document.createElement("span");
+        who.className = "msg-who-badge";
+        who.textContent = isOperator ? "Người" : "AI";
+        heading.append(who);
+        if (!isOperator && m.from_slot_id != null) {
+          const reply = document.createElement("button");
+          reply.type = "button";
+          reply.className = "msg-reply-btn";
+          reply.textContent = "Nhắn lại";
+          reply.onclick = () => {
+            selectAgentFilter(m.from_slot_id);
+            document.getElementById("prompt-input")?.focus();
+          };
+          heading.append(reply);
+        }
         const content = document.createElement("div");
         content.className = "timeline-content";
         content.append(heading);
@@ -1407,12 +1430,82 @@
       if (!messages.length && !feed.children.length) {
         const empty = document.createElement("div");
         empty.className = "empty";
-        empty.innerHTML = '<div class="empty-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div><span>Chưa có tin nhắn phù hợp</span>';
+        empty.innerHTML = '<div class="empty-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div><span>Chưa có dữ liệu tin nhắn</span>';
         feed.append(empty);
       }
     }
 
+    function collapseBroadcasts(messages) {
+      const out = [];
+      const skip = new Set();
+      const WINDOW_MS = 2000;
+      const ts = (m) => {
+        const n = Date.parse(m.sent_at);
+        return Number.isFinite(n) ? n : 0;
+      };
+      for (const m of messages) {
+        if (skip.has(m.id)) continue;
+        if (m.from_id === "operator" && (m.to_slot_id != null || m.to_id === "all-workers")) {
+          const t = ts(m);
+          const group = messages.filter(o =>
+            o.from_id === "operator" &&
+            o.text === m.text &&
+            o.msg_type === m.msg_type &&
+            (o.to_slot_id != null || o.to_id === "all-workers") &&
+            Math.abs(ts(o) - t) <= WINDOW_MS
+          );
+          const slots = new Set(group.map(o => o.to_slot_id).filter(id => id != null));
+          // ponytail: 2s same-text window; unique send-id if double-send same text matters
+          if (group.length > 1 && (slots.size > 1 || group.some(o => o.to_id === "all-workers"))) {
+            group.forEach(o => skip.add(o.id));
+            out.push({ ...m, to_slot_id: null, to_id: "all-workers", _broadcast: slots.size || group.length });
+            continue;
+          }
+        }
+        skip.add(m.id);
+        out.push(m);
+      }
+      return out;
+    }
+
+    function unreadKey(sessionId, slotId) {
+      return "ma-seen:" + (sessionId || "") + ":" + slotId;
+    }
+    function lastSeenFor(slotId) {
+      try { return Number(sessionStorage.getItem(unreadKey(state?.sessionId, slotId)) || 0); }
+      catch { return 0; }
+    }
+    function markSlotSeen(slotId) {
+      if (slotId == null || slotId === "") return;
+      const last = (state?.messages || []).filter(m => m.from_slot_id === Number(slotId)).reduce((max, m) => Math.max(max, Number(m.id) || 0), 0);
+      try { sessionStorage.setItem(unreadKey(state?.sessionId, slotId), String(last)); } catch {}
+    }
+    function unreadCount(slotId) {
+      const seen = lastSeenFor(slotId);
+      return (state?.messages || []).filter(m => m.from_slot_id === Number(slotId) && Number(m.id) > seen).length;
+    }
+    function mentionMatches(prefix) {
+      const q = String(prefix || "").toLowerCase();
+      return (state?.slots || []).filter(s => {
+        const name = (s.display_name || "Worker " + s.id).toLowerCase();
+        return !q || name.startsWith(q) || name.includes(q);
+      });
+    }
+
     let sidebarSearchQuery = "";
+
+    function selectAgentFilter(slotId) {
+      messageAgent = slotId == null || slotId === "" ? "" : String(slotId);
+      if (messageAgent) markSlotSeen(messageAgent);
+      const sel = document.getElementById("message-agent");
+      if (sel) sel.value = messageAgent;
+      activeTab = "messages";
+      document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+      document.querySelector('[data-tab="messages"]')?.classList.add("active");
+      if (typeof showPanel === "function") showPanel("messages");
+      renderMessages(true);
+      queueMicrotask(() => document.getElementById("prompt-input")?.focus());
+    }
 
     async function sendDirectMessage() {
       const input = document.getElementById("prompt-input");
@@ -1429,52 +1522,44 @@
       if (sendBtn) sendBtn.disabled = true;
 
       try {
-        const payload = {
-          session_id: state?.sessionId,
-          to_slot_id: targetSlotId,
-          text: text,
-          from_id: "operator",
-          msg_type: "chat"
-        };
-        let ok = false;
-        let res = await fetch("/api/message/send", {
+        const res = await fetch("/api/message/send", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        }).catch(() => null);
-
-        if (!res || !res.ok) {
-          res = await fetch("/api/message", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload)
-          }).catch(() => null);
+          body: JSON.stringify({
+            session_id: state?.sessionId,
+            to_slot_id: targetSlotId,
+            text,
+            from_id: "operator",
+            msg_type: "chat"
+          })
+        });
+        const result = await res.json().catch(() => null);
+        if (!res.ok || !result || result.ok === false) {
+          throw new Error((result && (result.error || result.message)) || "Gửi không thành công");
         }
-
-        if (!res || !res.ok) {
-          res = await fetch("/api/messages", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload)
-          }).catch(() => null);
+        const realId = result.id ?? (Array.isArray(result.ids) ? result.ids[0] : null);
+        if (realId != null && state) {
+          const optimistic = {
+            id: realId,
+            from_id: "operator",
+            from_slot_id: null,
+            to_id: targetSlotId ? undefined : "all-workers",
+            to_slot_id: targetSlotId,
+            text,
+            msg_type: "chat",
+            sent_at: new Date().toISOString(),
+            _broadcast: Array.isArray(result.ids) && result.ids.length > 1 ? result.ids.length : undefined,
+          };
+          if (!state.messages.some(m => m.id === realId)) state.messages.push(optimistic);
+          renderMessages(true);
         }
-
-        if (res && res.ok) {
-          ok = true;
-        } else if (ws && ws.readyState === 1) {
-          ws.send(JSON.stringify({ type: "send_message", data: payload }));
-          ok = true;
-        }
-
-        if (ok) {
-          input.value = "";
-          if (statusEl) {
-            statusEl.textContent = "Đã gửi!";
-            statusEl.className = "composer-status success";
-            setTimeout(() => { if (statusEl && statusEl.textContent === "Đã gửi!") statusEl.textContent = ""; }, 2500);
-          }
-        } else {
-          throw new Error("Gửi không thành công");
+        input.value = "";
+        if (statusEl) {
+          statusEl.textContent = result.warning ? "Đã giao (held)" : "Đã gửi!";
+          statusEl.className = "composer-status success";
+          setTimeout(() => {
+            if (statusEl && (statusEl.textContent === "Đã gửi!" || statusEl.textContent === "Đã giao (held)")) statusEl.textContent = "";
+          }, 2500);
         }
       } catch (err) {
         if (statusEl) {
@@ -1549,13 +1634,15 @@
             '</details>' +
             '<div class="prompt-composer" id="prompt-composer">' +
               '<div class="composer-header-row">' +
-                '<span class="composer-target-pill" id="prompt-target-label"><span>💬</span> Đang nhắn tới: Tất cả worker</span>' +
+                '<span class="composer-target-pill" id="prompt-target-label">Đang nhắn tới: <strong>Tất cả worker</strong></span>' +
                 '<span class="composer-status" id="prompt-status" role="status"></span>' +
               '</div>' +
               '<div class="composer-box">' +
-                '<textarea id="prompt-input" class="composer-textarea" rows="2" placeholder="Give your agent a prompt or a task: Enter to send, Shift+Enter for a new line" aria-label="Nhập prompt"></textarea>' +
+                '<textarea id="prompt-input" class="composer-textarea" rows="2" placeholder="Nhắn Engineer… / Nhắn cả nhóm…  Enter gửi, Shift+Enter xuống dòng, @tên chọn worker" aria-label="Nhắn worker"></textarea>' +
+                '<div id="mention-list" class="mention-list" hidden></div>' +
                 '<div class="composer-footer-row">' +
-                  '<span class="composer-actions-hint">Enter gửi &bull; Shift+Enter xuống dòng</span>' +
+                  '<span class="composer-actions-hint">Enter gửi &bull; Shift+Enter xuống dòng &bull; @mention</span>' +
+                  '<button type="button" class="composer-broadcast-btn" id="prompt-broadcast-btn">Nhắn mọi worker</button>' +
                   '<button type="button" class="composer-send-btn" id="prompt-send-btn"><span>Gửi</span> &rarr;</button>' +
                 '</div>' +
               '</div>' +
@@ -1597,13 +1684,57 @@
 
         const sendBtn = el.querySelector("#prompt-send-btn");
         if (sendBtn) sendBtn.onclick = sendDirectMessage;
+        const broadcastBtn = el.querySelector("#prompt-broadcast-btn");
+        if (broadcastBtn) broadcastBtn.onclick = () => { messageAgent = ""; sendDirectMessage(); };
         const promptInput = el.querySelector("#prompt-input");
+        const mentionBox = el.querySelector("#mention-list");
+        function hideMentions() { if (mentionBox) { mentionBox.hidden = true; mentionBox.replaceChildren(); } }
+        function applyMention(slot) {
+          if (!promptInput || !slot) return;
+          promptInput.value = promptInput.value.replace(/@[\w.-]*$/, "");
+          selectAgentFilter(slot.id);
+          hideMentions();
+        }
+        function showMentions(prefix) {
+          if (!mentionBox) return;
+          const hits = mentionMatches(prefix);
+          if (hits.length > 1) {
+            mentionBox.hidden = false;
+            mentionBox.replaceChildren(...hits.slice(0, 8).map(slot => {
+              const b = document.createElement("button");
+              b.type = "button";
+              b.className = "mention-item";
+              b.textContent = "@" + (slot.display_name || "Worker " + slot.id);
+              b.onclick = () => applyMention(slot);
+              return b;
+            }));
+            return;
+          }
+          if (hits.length === 1 && prefix) applyMention(hits[0]);
+          else hideMentions();
+        }
         if (promptInput) {
+          promptInput.oninput = () => {
+            const at = promptInput.value.match(/@([\w.-]*)$/);
+            if (at) showMentions(at[1]); else hideMentions();
+          };
           promptInput.onkeydown = e => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
+              const at = promptInput.value.match(/@([\w.-]*)$/);
+              if (at) {
+                const hits = mentionMatches(at[1]);
+                if (hits.length !== 1) { showMentions(at[1]); return; }
+                applyMention(hits[0]);
+                return;
+              }
               sendDirectMessage();
             }
+            if (e.key === "Tab" && mentionBox && !mentionBox.hidden) {
+              const first = mentionBox.querySelector("button");
+              if (first) { e.preventDefault(); first.click(); }
+            }
+            if (e.key === "Escape") hideMentions();
           };
         }
 
@@ -1662,7 +1793,7 @@
         (!messageQuery || [m.text, slotMap.get(m.from_slot_id)?.display_name, m.from_id, slotMap.get(m.to_slot_id)?.display_name, m.to_id].join(" ").toLowerCase().includes(messageQuery.toLowerCase()))
       ).sort((a, b) => a.id - b.id);
       const system = m => ["system", "control", "team_change"].includes(m.msg_type);
-      const messages = matches.filter(m => !system(m));
+      const messages = collapseBroadcasts(matches.filter(m => !system(m)));
       const caption = `${messages.length} tin / ${state.messages.length} bản ghi tải gần nhất`;
       const captionEl = el.querySelector("#message-count");
       if (captionEl && captionEl.textContent !== caption) captionEl.textContent = caption;
@@ -1726,7 +1857,7 @@
         if (targetTelemetry) {
           targetTelemetry.innerHTML = `<span class="token-metric">Input: <b class="tab-nums">${inStr}</b></span> &bull; <span class="token-metric">Output: <b class="tab-nums">${outStr}</b></span> &bull; <span class="token-metric">Total: <b class="tab-nums">${totalStr}</b></span>`;
         }
-        if (composerTarget) composerTarget.innerHTML = `<span>💬</span> Đang nhắn riêng tới: <strong>${esc(activeSlot.display_name)}</strong> (Slot ${activeSlot.id})`;
+        if (composerTarget) composerTarget.innerHTML = `Đang nhắn riêng tới: <strong>${esc(activeSlot.display_name)}</strong> (Slot ${activeSlot.id})`;
       } else {
         if (targetAvatar) targetAvatar.innerHTML = `<div class="agent-avatar-circle" style="width:36px;height:36px">ALL<span class="agent-pulse-dot dot-connected"></span></div>`;
         if (targetName) targetName.textContent = "Hội thoại nhóm";
@@ -1744,12 +1875,13 @@
         if (targetTelemetry) {
           targetTelemetry.innerHTML = `<span class="token-metric">Input: <b class="tab-nums">${anyObs ? sumIn.toLocaleString("en-US") : "0"}</b></span> &bull; <span class="token-metric">Output: <b class="tab-nums">${anyObs ? sumOut.toLocaleString("en-US") : "0"}</b></span> &bull; <span class="token-metric">Total: <b class="tab-nums">${anyObs ? (sumIn + sumOut).toLocaleString("en-US") : "0"}</b></span>`;
         }
-        if (composerTarget) composerTarget.innerHTML = `<span>💬</span> Đang nhắn tới: <strong>Tất cả worker</strong>`;
+        if (composerTarget) composerTarget.innerHTML = `Đang nhắn tới: <strong>Tất cả worker</strong>`;
       }
 
       // --- Render Agents Sidebar (Grouped by status: NEEDS INPUT / TO REVIEW / ACTIVE / SEEN-IDLE) ---
       const info = el.querySelector("#conversation-agents");
-      const infoKey = JSON.stringify([state.slots, state.plan, messageAgent, sidebarSearchQuery]);
+      const unreadSig = (state.slots || []).map(s => [s.id, unreadCount(s.id)]);
+      const infoKey = JSON.stringify([state.slots, state.plan, messageAgent, sidebarSearchQuery, unreadSig]);
       if (info && info.dataset.version !== infoKey) {
         let filteredSlots = state.slots;
         if (sidebarSearchQuery) {
@@ -1760,15 +1892,20 @@
           );
         }
 
+        const bucketed = (typeof window !== "undefined" && window.AgentsRoom?.categorizeSlots)
+          ? window.AgentsRoom.categorizeSlots(filteredSlots)
+          : { needsInput: filteredSlots.filter(s => s.paused || s.task_state === "blocked"), toReview: filteredSlots.filter(s => s.task_state === "done_pending_review"), active: filteredSlots.filter(s => s.status === "connected" && (s.task_state === "working" || s.task_state === "addressing_feedback")), idle: [] };
+        const groupedIds = new Set([...(bucketed.needsInput || []), ...(bucketed.toReview || []), ...(bucketed.active || []), ...(bucketed.idle || [])].map(s => s.id));
+        if (bucketed.idle) for (const s of filteredSlots) if (!groupedIds.has(s.id)) bucketed.idle.push(s);
         const groups = [
-          { id: "needs-input", label: "NEEDS INPUT", dot: "dot-blocked", match: s => s.task_state === "blocked" || s.task_state === "needs_input" },
-          { id: "review", label: "TO REVIEW", dot: "dot-review", match: s => s.task_state === "done_pending_review" },
-          { id: "active", label: "ACTIVE", dot: "dot-connected", match: s => s.task_state === "working" || s.task_state === "addressing_feedback" },
-          { id: "idle", label: "SEEN / IDLE", dot: "dot-disconnected", match: s => !["blocked", "needs_input", "done_pending_review", "working", "addressing_feedback"].includes(s.task_state) }
+          { id: "needs-input", label: "Cần bạn", dot: "dot-blocked", slots: bucketed.needsInput || [] },
+          { id: "review", label: "Chờ duyệt", dot: "dot-review", slots: bucketed.toReview || [] },
+          { id: "active", label: "Đang làm", dot: "dot-connected", slots: bucketed.active || [] },
+          { id: "idle", label: "Rảnh", dot: "dot-disconnected", slots: bucketed.idle || [] }
         ];
 
         const allSelected = messageAgent === "" ? "selected" : "";
-        let sidebarHtml = `<div class="agent-nav-card ${allSelected}" data-slot="" tabindex="0">
+        let sidebarHtml = `<div class="agent-nav-card ${allSelected}" data-slot="" tabindex="0" role="button" aria-pressed="${messageAgent === ""}" aria-label="Tất cả worker">
           <div class="agent-avatar-circle">
             <span>ALL</span>
             <span class="agent-pulse-dot dot-connected"></span>
@@ -1784,13 +1921,13 @@
         </div>`;
 
         for (const g of groups) {
-          const inGroup = filteredSlots.filter(g.match);
+          const inGroup = g.slots;
           if (!inGroup.length) continue;
           sidebarHtml += `<div class="agent-group group-${g.id}">
             <div class="agent-group-title">
               <span class="agent-group-dot"></span>
               <span>${g.label}</span>
-              <span style="margin-left:auto;font-size:9.5px;color:var(--text-muted)">(${inGroup.length})</span>
+              <span style="margin-left:auto;font-size:11px;color:var(--text-muted)">(${inGroup.length})</span>
             </div>
             ${inGroup.map(slot => {
               const isSel = String(slot.id) === String(messageAgent) ? "selected" : "";
@@ -1800,9 +1937,11 @@
               const wf = workflowMeta(slot.task_state);
               const lastMsg = state.messages.filter(m => m.from_slot_id === slot.id || m.to_slot_id === slot.id).at(-1);
               const preview = lastMsg ? (lastMsg.text || "").slice(0, 48) : (slot.task_state ? wf.label : "Sẵn sàng");
+              const unread = unreadCount(slot.id);
+              const unreadHtml = unread ? `<span class="unread-badge" aria-label="${unread} tin chưa đọc">${unread}</span>` : "";
               const dotCls = !conn ? "dot-disconnected" : g.dot;
               const connLabel = conn ? "Kết nối" : "Ngắt kết nối";
-              return `<div class="agent-nav-card ${isSel}" data-slot="${slot.id}" tabindex="0" role="button" aria-label="${esc(slot.display_name)} - ${esc(rInfo.full)} - ${connLabel}">
+              return `<div class="agent-nav-card ${isSel}${unread ? " has-unread" : ""}" data-slot="${slot.id}" tabindex="0" role="button" aria-pressed="${isSel === "selected"}" aria-label="${esc(slot.display_name || "Worker " + slot.id)} - ${esc(rInfo.full)} - ${connLabel}">
                 <div class="agent-avatar-circle" title="${esc(mInfo.brand)}">
                   <span>${esc(rInfo.mini)}</span>
                   <span class="agent-pulse-dot ${dotCls}"></span>
@@ -1810,12 +1949,13 @@
                 <div class="agent-nav-card-info">
                   <div class="agent-nav-card-top">
                     <strong class="agent-nav-card-name">${esc(slot.display_name || "Worker " + slot.id)}</strong>
+                    ${unreadHtml}
                     <span class="agent-nav-card-runtime" title="Model: ${esc(mInfo.brand)}">${esc(mInfo.brand)}</span>
                   </div>
                   <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
                     <span class="agent-nav-card-role">${esc(rInfo.full)}</span>
-                    <span class="badge ${wf.cls}" style="font-size:9.5px;padding:1px 5px">${esc(wf.label)}</span>
-                    <span class="status-label-text" style="font-size:9.5px;color:${conn ? "var(--green)" : "var(--text-muted)"}">[${connLabel}]</span>
+                    <span class="badge ${wf.cls}" style="font-size:11px;padding:2px 6px">${esc(wf.label)}</span>
+                    <span class="status-label-text" style="font-size:11px;color:${conn ? "var(--green)" : "var(--text-muted)"}">[${connLabel}]</span>
                   </div>
                   <span class="agent-nav-card-preview">${esc(preview)}</span>
                 </div>
@@ -1827,13 +1967,14 @@
         info.innerHTML = sidebarHtml;
         info.dataset.version = infoKey;
 
-        // Card click handler
         info.querySelectorAll(".agent-nav-card").forEach(card => {
-          card.onclick = () => {
-            messageAgent = card.dataset.slot || "";
-            const sel = el.querySelector("#message-agent");
-            if (sel) sel.value = messageAgent;
-            renderMessages(true);
+          const selectCard = () => selectAgentFilter(card.dataset.slot || "");
+          card.onclick = selectCard;
+          card.onkeydown = event => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              selectCard();
+            }
           };
         });
       }
@@ -1847,7 +1988,7 @@
     function renderPlan() {
       const el = document.getElementById("panel-plan");
       if (!state.plan?.plan) {
-        el.innerHTML = '<div class="empty"><div class="empty-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div><span>Chưa có kế hoạch</span></div>';
+        el.innerHTML = '<div class="empty"><div class="empty-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div><span>Chưa có kế hoạch</span></div>';
         return;
       }
       const { plan, items } = state.plan;
@@ -1916,7 +2057,7 @@
       const el = document.getElementById("panel-knowledge");
       const entries = state.knowledge ?? [];
       if (!entries.length) {
-        el.innerHTML = '<div class="empty"><div class="empty-icon">~</div>No knowledge entries. Agents will store decisions and discoveries here.</div>';
+        el.innerHTML = '<div class="empty"><div class="empty-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></div><span>Chưa có dữ liệu tri thức</span></div>';
         return;
       }
       const html = entries.map(e => {
@@ -1957,7 +2098,7 @@
       }
 
       if (!html) {
-        html = '<div class="empty"><div class="empty-icon">~</div>No file locks or ownership zones</div>';
+        html = '<div class="empty"><div class="empty-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div><span>Chưa có dữ liệu khóa tệp</span></div>';
       }
       el.innerHTML = html;
     }

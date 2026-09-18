@@ -602,10 +602,10 @@ function handleSendMessage(body: SendMessageRequest): SendMessageResult {
 
   if (!toId) return { ok: false, error: "No target specified" };
 
-  // Allow messages to "orchestrator" and driver-managed slots (no real peer_id)
-  const isSpecialTarget = toId === "orchestrator" || toId === "__orchestrator__" || toId.startsWith("__slot_");
+  // Allow messages to "orchestrator", the human operator, and driver-managed slots (no real peer_id)
+  const isSpecialTarget = toId === "orchestrator" || toId === "__orchestrator__" || toId === "operator" || toId.startsWith("__slot_");
 
-  // Verify target exists (unless targeting orchestrator or driver-managed slot)
+  // Verify target exists (unless targeting orchestrator, operator, or driver-managed slot)
   if (!isSpecialTarget) {
     const target = db.query("SELECT id FROM peers WHERE id = ?").get(toId) as { id: string } | null;
     if (!target) return { ok: false, error: `Peer ${toId} not found` };
@@ -615,6 +615,10 @@ function handleSendMessage(body: SendMessageRequest): SendMessageResult {
   let fromSlotId: number | null = null;
   const fromPeer = db.query("SELECT slot_id FROM peers WHERE id = ?").get(body.from_id) as { slot_id: number | null } | null;
   if (fromPeer) fromSlotId = fromPeer.slot_id;
+  if (fromSlotId == null) {
+    const slotFromId = /^__slot_(\d+)__$/.exec(body.from_id);
+    if (slotFromId) fromSlotId = Number(slotFromId[1]);
+  }
 
   // Check if target slot is paused
   let held = 0;
@@ -631,10 +635,10 @@ function handleSendMessage(body: SendMessageRequest): SendMessageResult {
     }
   }
 
-  insertMessage.run(body.from_id, toId, body.text, now, sessionId, fromSlotId, toSlotId, msgType, held);
+  const inserted = insertMessage.run(body.from_id, toId, body.text, now, sessionId, fromSlotId, toSlotId, msgType, held);
 
   const warning = held ? "Message held — target agent is paused" : undefined;
-  return { ok: true, warning };
+  return { ok: true, warning, id: Number(inserted.lastInsertRowid) };
 }
 
 function handlePollMessages(body: PollMessagesRequest): PollMessagesResponse {
@@ -1392,7 +1396,8 @@ Bun.serve({
           const rows = db.query(
             "SELECT msg_type, sent_at FROM messages WHERE to_slot_id = ? AND delivered = 0 AND held = 0 ORDER BY id ASC"
           ).all(slot_id) as { msg_type: string; sent_at: string }[];
-          const oldest_at = rows.length > 0 ? new Date(rows[0].sent_at).getTime() : 0;
+          const oldest = rows[0];
+          const oldest_at = oldest ? new Date(oldest.sent_at).getTime() : 0;
           return Response.json({ count: rows.length, msg_types: rows.map(r => r.msg_type), oldest_at });
         }
         case "/unregister":

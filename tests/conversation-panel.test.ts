@@ -23,9 +23,11 @@ test("dashboard header does not present recorded approvals as verified completio
 });
 
 test("panel validates exact messages, never accepts controls or external URLs", () => {
-  for (const value of [null, [], { type: "control" }, { type: "chat", command: "evil" }, { type: "select", key: 1 }, { type: "select", key: "x".repeat(401) }]) expect(validMessage(value)).toBe(false);
+  for (const value of [null, [], { type: "control" }, { type: "chat", command: "evil" }, { type: "select", key: 1 }, { type: "select", key: "x".repeat(401) }, { type: "reply" }, { type: "reply", name: 1 }, { type: "reply", name: "x", extra: 1 }]) expect(validMessage(value)).toBe(false);
   expect(validMessage({ type: "ready" })).toBe(true);
   expect(validMessage({ type: "select", key: "known" })).toBe(true);
+  expect(validMessage({ type: "chat" })).toBe(true);
+  expect(validMessage({ type: "reply", name: "Engineer" })).toBe(true);
 });
 
 test("host keeps scoped bounded snapshots, CSP and trust guard without tool or network APIs", () => {
@@ -33,9 +35,11 @@ test("host keeps scoped bounded snapshots, CSP and trust guard without tool or n
   const posted: any[] = [];
   const webview = { html: "", cspSource: "vscode-webview:", asWebviewUri: (value: string) => value,
     postMessage: (data: any) => posted.push(data), onDidReceiveMessage: (callback: any) => { receive = callback; return { dispose() {} }; } };
-  const vscode = { workspace: { isTrusted: true }, commands: { registerCommand: (_: string, callback: any) => { command = callback; return { dispose() {} }; } },
+  const copied: string[] = [];
+  const infos: string[] = [];
+  const vscode = { workspace: { isTrusted: true }, env: { clipboard: { writeText: (text: string) => copied.push(text) } }, commands: { registerCommand: (_: string, callback: any) => { command = callback; return { dispose() {} }; } },
     ViewColumn: { Beside: 2 }, Uri: { joinPath: (root: string, name: string) => `${root}/${name}` }, window: {
-      createWebviewPanel: () => ({ webview, onDidDispose() {}, dispose() {}, reveal() {} }), showInformationMessage() {},
+      createWebviewPanel: () => ({ webview, onDidDispose() {}, dispose() {}, reveal() {} }), showInformationMessage(text: string) { infos.push(text); },
     } };
   const host = createConversationPanel(vscode, { extensionUri: "extension", subscriptions: [] });
   command!(); receive!({ type: "ready" });
@@ -46,6 +50,11 @@ test("host keeps scoped bounded snapshots, CSP and trust guard without tool or n
   expect(posted.at(-1).sessions).toHaveLength(12);
   const selected = posted.at(-1).selected;
   receive!({ type: "select", key: "unknown" }); expect(posted.at(-1).selected).toBe(selected);
+  vscode.workspace.isTrusted = true;
+  receive!({ type: "reply", name: "Engineer" });
+  expect(copied.at(-1)).toMatch(/^\/direct .*\| Engineer \| $/);
+  expect(infos.at(-1)).toContain("Panel không gửi tin");
+  expect(webview.html).toContain("connect-src 'none'");
   vscode.workspace.isTrusted = false; receive!({ type: "ready" });
   expect(posted.at(-1).sessions).toHaveLength(0); expect(posted.at(-1).entry).toBeUndefined();
 });

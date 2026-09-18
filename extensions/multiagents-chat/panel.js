@@ -124,6 +124,12 @@
       const bubble = node("div", undefined, "msg-bubble");
       bubble.append(renderMessageBody(message.text));
 
+      if (!isOperator) {
+        const reply = node("button", "Trả lời @Name trong Chat", "msg-reply-btn");
+        reply.type = "button";
+        reply.dataset.name = String(message.from || "");
+        bubble.append(reply);
+      }
       contentWrap.append(header, bubble);
       next.append(avatar, contentWrap);
 
@@ -304,6 +310,15 @@
 
   $("session").addEventListener("change", () => api.postMessage({ type: "select", key: $("session").value }));
   $("chat").addEventListener("click", () => api.postMessage({ type: "chat" }));
+  if ($("reply")) $("reply").addEventListener("click", () => {
+    const name = ($("session").selectedOptions?.[0]?.textContent || "").split("·")[0].trim() || "worker";
+    api.postMessage({ type: "reply", name });
+  });
+  $("timeline").addEventListener("click", event => {
+    const btn = event.target.closest?.(".msg-reply-btn");
+    if (!btn) return;
+    api.postMessage({ type: "reply", name: String(btn.dataset.name || "").slice(0, 200) });
+  });
   $("latest").addEventListener("click", () => {
     if (pendingMessages) { reconcile($("timeline"), pendingMessages, []); timelineVersion = JSON.stringify(pendingMessages); pendingMessages = undefined; }
     $("timeline").scrollTop = $("timeline").scrollHeight; $("latest").hidden = true;

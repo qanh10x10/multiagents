@@ -9,7 +9,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 
-const HOME = os.homedir();
+const HOME = process.env.HOME || process.env.USERPROFILE || os.homedir();
 const CLAUDE_PERMISSION_ENTRIES = [
   "mcp__multiagents",
   "mcp__multiagents-orch",
@@ -19,9 +19,21 @@ const CLAUDE_PERMISSION_ENTRIES = [
 
 function findAgentCli(name: string): string | null {
   try {
-    const which = Bun.spawnSync(["which", name]);
-    if (which.exitCode === 0) return new TextDecoder().decode(which.stdout).trim();
+    const probe = Bun.spawnSync([process.platform === "win32" ? "where" : "which", name], {
+      stdout: "pipe",
+      stderr: "ignore",
+    });
+    const found = new TextDecoder().decode(probe.stdout).trim().split(/\r?\n/).find(Boolean);
+    if (probe.exitCode === 0 && found) return found;
   } catch { /* ok */ }
+  const exts = process.platform === "win32" ? [".cmd", ".exe", ".bat", ""] : [""];
+  for (const dir of (process.env.PATH ?? "").split(path.delimiter)) {
+    if (!dir) continue;
+    for (const ext of exts) {
+      const candidate = path.join(dir, name + ext);
+      if (fs.existsSync(candidate)) return candidate;
+    }
+  }
   return null;
 }
 

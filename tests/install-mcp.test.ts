@@ -22,6 +22,10 @@ function makeTempHome(): string {
 
 function writeExecutable(home: string, name: string, script: string): void {
   fs.writeFileSync(path.join(home, "bin", name), script, { mode: 0o755 });
+  if (process.platform === "win32") {
+    const fail = /exit 1/.test(script);
+    fs.writeFileSync(path.join(home, "bin", `${name}.cmd`), fail ? "@echo off\r\nexit /b 1\r\n" : "@echo off\r\nexit /b 0\r\n");
+  }
 }
 
 function runWithHome(home: string, command: string[]): { exitCode: number | null; stdout: string; stderr: string } {
@@ -30,7 +34,8 @@ function runWithHome(home: string, command: string[]): { exitCode: number | null
     env: {
       ...process.env,
       HOME: home,
-      PATH: `${path.join(home, "bin")}:${SAFE_PATH}`,
+      USERPROFILE: home,
+      PATH: `${path.join(home, "bin")}${path.delimiter}${SAFE_PATH}`,
     },
     stdout: "pipe",
     stderr: "pipe",

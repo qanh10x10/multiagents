@@ -29,7 +29,8 @@ export class ClaudeAdapter extends BaseAdapter {
 CHANNEL MESSAGES: When you receive a <channel source="multiagents" ...> message:
   → STOP what you're doing immediately
   → Read from_id, from_role, from_summary to understand the sender
-  → Reply via send_message with their from_id — they are WAITING on you
+  → If from_id is operator (human): send_message(to_id="operator") with a real reply
+  → Else reply via send_message with their from_id — they are WAITING on you
   → Then resume your previous work
   Treat every channel message like a production alert — respond first, continue after.
 

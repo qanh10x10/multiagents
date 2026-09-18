@@ -7,26 +7,84 @@ Multi-agent orchestration platform for **Claude Code**, **Codex CLI**, and **Gem
 
 Built on [MCP (Model Context Protocol)](https://modelcontextprotocol.io/).
 
-## What It Does
+## Screenshots
 
+Web dashboard on `localhost:7900` (`start.bat` / `./start.sh` / `multiagents web`). Live session: conversation, plan, shared knowledge, token stats.
+
+![Conversation](docs/images/dashboard-conversation.png)
+
+![Plan](docs/images/dashboard-plan.png)
+
+![Knowledge](docs/images/dashboard-knowledge.png)
+
+![Stats](docs/images/dashboard-stats.png)
+
+## How It Works
+
+One operator talks to the **orchestrator**. The orchestrator spawns workers. Workers never talk to each other over model APIs. All coordination goes through a local **broker** (HTTP + SQLite on `127.0.0.1:7899`): messages, slots, file locks, knowledge, plan, usage.
+
+```mermaid
+flowchart TB
+  operator["Operator<br/>VS Code Copilot / Claude Desktop / CLI"]
+  orch["Orchestrator MCP<br/>create_team, broadcast, release"]
+  dash["Web dashboard :7900"]
+  broker["Broker singleton :7899<br/>SQLite sessions / slots / messages / locks / knowledge"]
+  claude["Claude worker<br/>MCP stdio + channel push"]
+  codex["Codex worker<br/>codex app-server + steer"]
+  gemini["Gemini worker<br/>MCP piggyback"]
+
+  operator -->|MCP tools| orch
+  orch -->|spawn + drive turns| claude
+  orch -->|spawn + drive turns| codex
+  orch -->|spawn + drive turns| gemini
+  orch -->|HTTP| broker
+  dash -->|HTTP + WebSocket| broker
+  claude -->|register / poll / send| broker
+  codex -->|register / poll / send| broker
+  gemini -->|register / poll / send| broker
 ```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│ Claude Code  │     │  Codex CLI  │     │ Gemini CLI  │
-│ (Engineer)   │     │ (Reviewer)  │     │ (Designer)  │
-└──────┬───────┘     └──────┬──────┘     └──────┬──────┘
-       │   MCP (stdio)      │  CodexDriver       │
-       └────────────┬───────┴────────────────────┘
-                    │
-            ┌───────▼────────┐
-            │  Broker Daemon  │  SQLite + HTTP on localhost:7899
-            │  (singleton)    │
-            └───────┬────────┘
-                    │
-            ┌───────▼────────┐
-            │  Orchestrator   │  MCP server for Claude Desktop
-            │  (team manager) │  Spawns agents, forwards messages,
-            └────────────────┘  monitors progress, auto-restarts
+
+### Team launch
+
+```mermaid
+sequenceDiagram
+  participant Op as Operator
+  participant Orch as Orchestrator
+  participant Bro as Broker
+  participant W as Worker CLIs
+
+  Op->>Orch: list_models (catalog only, no provider call)
+  Op->>Orch: create_team(project_dir, roles, ownership, plan)
+  Orch->>Bro: create session + slots
+  Orch->>W: spawn Claude / Codex / Gemini
+  W->>Bro: register + heartbeat
+  Orch->>W: initial task (Codex: bootstrap Ready then reply)
+  loop until release
+    W->>Bro: set_summary / send_message / store_knowledge / acquire_file
+    Bro-->>W: undelivered messages
+    Bro-->>Orch: status, plan, usage
+    Bro-->>Op: dashboard WebSocket
+  end
+  Op->>Orch: release_agent / end_session
 ```
+
+### Review loop
+
+```mermaid
+stateDiagram-v2
+  [*] --> idle
+  idle --> working: set_summary or first output
+  working --> done_pending_review: signal_done
+  working --> approved: reviewer/QA signal_done
+  done_pending_review --> addressing_feedback: submit_feedback(actionable)
+  addressing_feedback --> done_pending_review: signal_done again
+  done_pending_review --> approved: approve
+  approved --> released: release_agent
+```
+
+Workers stay connected until the orchestrator **releases** them. File ownership is static (`src/**` vs `tests/**`). Shared files use time-limited locks. Knowledge is session-scoped key/value so agents do not invent conflicting decisions.
+
+## What It Does
 
 - **Peer discovery**: agents find each other via `list_peers`
 - **Real-time messaging**: instant for Claude (channel push), <3s for Codex (mid-turn steer), 1-3s for Gemini (piggyback)
@@ -36,6 +94,7 @@ Built on [MCP (Model Context Protocol)](https://modelcontextprotocol.io/).
 - **Review loops**: `signal_done → submit_feedback → fix → re-review → approve`
 - **Shared knowledge**: persistent key-value store for architectural decisions, discovered patterns, and project context — prevents context drift across agents
 - **Persistent sessions**: survive agent restarts, full message history
+- **Web dashboard**: conversation, plan, knowledge, files, stats, studio on `localhost:7900`
 - **TUI dashboard**: real-time monitoring with 5 tabs (agents, messages, stats, plan, files)
 - **Auto-restart**: crashed agents respawn with handoff context
 - **Graceful shutdown**: broker and orchestrator kill all managed processes on exit

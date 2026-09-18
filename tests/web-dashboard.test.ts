@@ -199,7 +199,7 @@ describe("Web Dashboard — API endpoints", () => {
     expect(res.status).toBe(400);
   });
 
-  test("/api/message/send sends message to slot or orchestrator", async () => {
+  test("/api/message/send broadcasts to session slots when no target", async () => {
     const res = await fetch(`${DASHBOARD_URL}/api/message/send`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -212,6 +212,69 @@ describe("Web Dashboard — API endpoints", () => {
     expect(res.status).toBe(200);
     const data = await res.json() as any;
     expect(data.ok).toBe(true);
+    expect(data.delivered_to).toBeGreaterThanOrEqual(1);
+    expect(Array.isArray(data.ids)).toBe(true);
+    expect(data.ids.length).toBeGreaterThanOrEqual(1);
+    expect(data.id).toBeGreaterThan(0);
+  });
+
+  test("/api/message/send reports no recipients when all slots released", async () => {
+    const sessionId = uid("released-session");
+    await brokerPost("/sessions/create", { id: sessionId, name: "Released", project_dir: fixtureDir });
+    const slot = await brokerPost("/slots/create", {
+      session_id: sessionId, display_name: "Gone", agent_type: "claude", role: "Software Engineer",
+    });
+    await brokerPost("/slots/update", { id: slot.id, task_state: "released" });
+    const res = await fetch(`${DASHBOARD_URL}/api/message/send`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: sessionId, text: "hi", from_id: "operator" }),
+    });
+    expect(res.status).toBe(409);
+    const data = await res.json() as any;
+    expect(data.ok).toBe(false);
+    expect(data.delivered_to).toBe(0);
+
+    const directRes = await fetch(`${DASHBOARD_URL}/api/message/send`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: sessionId, to_slot_id: slot.id, text: "hi direct", from_id: "operator" }),
+    });
+    expect(directRes.status).toBe(409);
+    const directData = await directRes.json() as any;
+    expect(directData.ok).toBe(false);
+    expect(directData.delivered_to).toBe(0);
+  });
+
+  test("/api/message/send delivers to a specific slot", async () => {
+    const slots = await brokerPost("/slots/list", { session_id: "dash-test-session" });
+    const slot = Array.isArray(slots) ? slots[0] : slots?.slots?.[0];
+    expect(slot?.id).toBeGreaterThan(0);
+    const res = await fetch(`${DASHBOARD_URL}/api/message/send`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        session_id: "dash-test-session",
+        to_slot_id: slot.id,
+        text: "Direct slot ping",
+        from_id: "operator",
+      }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json() as any;
+    expect(data.ok).toBe(true);
+    expect(data.id).toBeGreaterThan(0);
+  });
+});
+
+describe("Web Dashboard — conversation composer markup", () => {
+  test("inbox mention and broadcast live in workspace HTML", async () => {
+    const html = await Bun.file(new URL("../dashboard/index.html", import.meta.url)).text();
+    expect(html).toContain('id="mention-list"');
+    expect(html).toContain("Nhắn mọi worker");
+    expect(html).toContain("Cần bạn");
+    expect(html).toContain("AgentsRoom.categorizeSlots");
+    expect(html).toContain("Nhắn Engineer");
   });
 });
 

@@ -21,7 +21,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 
-const HOME = os.homedir();
+const HOME = process.env.HOME || process.env.USERPROFILE || os.homedir();
 const CLAUDE_PERMISSION_ENTRIES = ["mcp__multiagents", "mcp__multiagents-orch"] as const;
 const CLAUDE_STALE_PERMISSION_ENTRIES = ["mcp__multiagents__*", "mcp__multiagents-orch__*"] as const;
 const CODEX_ARGS_TOML = '["--agent-type", "codex"]';
@@ -39,13 +39,16 @@ const ORCH_SCRIPT = path.join(PACKAGE_ROOT, "orchestrator", "orchestrator-server
 // Resolve the bun binary (needed as the command since scripts use bun shebangs)
 function findBun(): string {
   try {
-    const which = Bun.spawnSync(["which", "bun"]);
-    const found = new TextDecoder().decode(which.stdout).trim();
-    if (found) return found;
+    const probe = Bun.spawnSync([process.platform === "win32" ? "where" : "which", "bun"], {
+      stdout: "pipe",
+      stderr: "ignore",
+    });
+    const found = new TextDecoder().decode(probe.stdout).trim().split(/\r?\n/).find(Boolean);
+    if (probe.exitCode === 0 && found) return found;
   } catch { /* ok */ }
   // Fallback candidates
   for (const p of [
-    path.join(HOME, ".bun", "bin", "bun"),
+    path.join(HOME, ".bun", "bin", process.platform === "win32" ? "bun.exe" : "bun"),
     "/usr/local/bin/bun",
     "/opt/homebrew/bin/bun",
   ]) {
@@ -61,11 +64,29 @@ interface AgentConfigResult {
   ok: boolean;
 }
 
+function findOnPath(name: string): string | null {
+  const exts = process.platform === "win32" ? [".cmd", ".exe", ".bat", ""] : [""];
+  for (const dir of (process.env.PATH ?? "").split(path.delimiter)) {
+    if (!dir) continue;
+    for (const ext of exts) {
+      const candidate = path.join(dir, name + ext);
+      if (fs.existsSync(candidate)) return candidate;
+    }
+  }
+  return null;
+}
+
 function findAgentCli(name: string): string | null {
   try {
-    const which = Bun.spawnSync(["which", name]);
-    if (which.exitCode === 0) return new TextDecoder().decode(which.stdout).trim();
+    const probe = Bun.spawnSync([process.platform === "win32" ? "where" : "which", name], {
+      stdout: "pipe",
+      stderr: "ignore",
+    });
+    const found = new TextDecoder().decode(probe.stdout).trim().split(/\r?\n/).find(Boolean);
+    if (probe.exitCode === 0 && found) return found;
   } catch { /* ok */ }
+  const fromPath = findOnPath(name);
+  if (fromPath) return fromPath;
 
   const knownPaths: Record<string, string[]> = {
     claude: [

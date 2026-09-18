@@ -248,7 +248,7 @@ export async function ensureMcpConfigs(projectDir: string, sessionId: string): P
   // ~/.codex/config.toml. Project-level .codex/config.toml is ignored for
   // MCP server discovery, and `-c mcp_servers.*` overrides are silently
   // dropped. The ONLY way to inject MCP servers is the global config file.
-  const codexGlobalDir = path.join(process.env.HOME ?? homedir(), ".codex");
+  const codexGlobalDir = path.join(process.env.HOME || process.env.USERPROFILE || homedir(), ".codex");
   if (!fs.existsSync(codexGlobalDir)) fs.mkdirSync(codexGlobalDir, { recursive: true });
 
   const codexTomlPath = path.join(codexGlobalDir, "config.toml");
@@ -278,7 +278,7 @@ export async function ensureMcpConfigs(projectDir: string, sessionId: string): P
   await Bun.write(codexTomlPath, codexToml.trimEnd() + "\n" + codexEntry);
 
   // --- Gemini: ~/.gemini/settings.json ---
-  const geminiSettingsPath = path.join(process.env.HOME ?? homedir(), ".gemini", "settings.json");
+  const geminiSettingsPath = path.join(process.env.HOME || process.env.USERPROFILE || homedir(), ".gemini", "settings.json");
   try {
     let geminiConfig: Record<string, unknown> = {};
     try {
@@ -433,6 +433,7 @@ export async function launchAgent(
     "",
     "STEP 4 — WHEN TEAMMATES MESSAGE YOU:",
     "  → Reply IMMEDIATELY via send_message. They are waiting on you.",
+    "  → If from_id is operator (human): send_message(to_id=\"operator\", message=your reply).",
     "  → If you need time, reply 'Working on it, will respond in ~N minutes'",
     "",
     "FAILURE MODES (your team will be stuck if you do these):",

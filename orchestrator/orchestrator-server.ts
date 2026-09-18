@@ -58,8 +58,48 @@ interface CodexSlotState {
   busy: boolean;
   /** Timestamp of last steer nudge (prevents spam). */
   lastNudge: number;
+  /** Next completed turn should land as a chat bubble to the human. */
+  replyOperator: boolean;
+  lastAgentText: string;
 }
+
 const activeCodexDrivers: Map<string, Map<number, CodexSlotState>> = new Map();
+
+function postOperatorReply(sessionId: string, slotId: number, text: string): void {
+  const body = text.trim().slice(0, 4000);
+  if (!body) return;
+  void new BrokerClient(BROKER_URL).sendMessage({
+    from_id: `__slot_${slotId}__`,
+    to_id: "operator",
+    text: body,
+    msg_type: "chat",
+    session_id: sessionId,
+  }).catch((err) => log(LOG_PREFIX, `Operator reply failed for slot ${slotId}: ${err}`));
+}
+
+function attachCodexSlot(sessionId: string, slotId: number, driver: CodexDriver, threadId: string | null): CodexSlotState {
+  let drivers = activeCodexDrivers.get(sessionId);
+  if (!drivers) {
+    drivers = new Map();
+    activeCodexDrivers.set(sessionId, drivers);
+  }
+  const state: CodexSlotState = { driver, threadId, busy: false, lastNudge: 0, replyOperator: false, lastAgentText: "" };
+  driver.onNotification((notification) => {
+    if (!state.replyOperator) return;
+    if (notification.method === "item/completed") {
+      const item = notification.params?.item as { type?: string; text?: unknown } | undefined;
+      if (item?.type === "agentMessage" && item.text) state.lastAgentText = String(item.text);
+    }
+    if (notification.method === "turn/completed") {
+      const reply = state.lastAgentText;
+      state.replyOperator = false;
+      state.lastAgentText = "";
+      postOperatorReply(sessionId, slotId, reply);
+    }
+  });
+  drivers.set(slotId, state);
+  return state;
+}
 const intentionallyStoppedSlots = new Set<number>();
 const sessionCompletionTimers = new Map<string, number>();
 
@@ -192,12 +232,7 @@ function handleEvent(event: AgentEvent): void {
 
               // If respawned as CodexDriver, track in activeCodexDrivers (not monitorProcess)
               if (result.codexDriver) {
-                let drivers = activeCodexDrivers.get(event.sessionId);
-                if (!drivers) {
-                  drivers = new Map();
-                  activeCodexDrivers.set(event.sessionId, drivers);
-                }
-                drivers.set(event.slotId, { driver: result.codexDriver, threadId: result.codexDriver.threadId, busy: false, lastNudge: 0 });
+                attachCodexSlot(event.sessionId, event.slotId, result.codexDriver, result.codexDriver.threadId);
                 monitorCodexDriver(result.codexDriver, event.slotId, event.sessionId, brokerClient, handleEvent);
                 result.codexDriver.onExit(() => {
                   handleEvent({
@@ -312,9 +347,7 @@ async function autoRestartIfIncomplete(
         sessionProcesses.set(slotId, result.process);
       }
       if (result.codexDriver) {
-        let drivers = activeCodexDrivers.get(sessionId);
-        if (!drivers) { drivers = new Map(); activeCodexDrivers.set(sessionId, drivers); }
-        drivers.set(slotId, { driver: result.codexDriver, threadId: result.codexDriver.threadId, busy: false, lastNudge: 0 });
+        attachCodexSlot(sessionId, slotId, result.codexDriver, result.codexDriver.threadId);
         monitorCodexDriver(result.codexDriver, slotId, sessionId, brokerClient, handleEvent);
         result.codexDriver.onExit(() => {
           handleEvent({
@@ -798,12 +831,7 @@ async function callOrchestratorTool(name: string, args: Record<string, unknown> 
 
           // Track CodexDriver instances for message forwarding
           if (result.codexDriver) {
-            let sessionDrivers = activeCodexDrivers.get(sessionId);
-            if (!sessionDrivers) {
-              sessionDrivers = new Map();
-              activeCodexDrivers.set(sessionId, sessionDrivers);
-            }
-            sessionDrivers.set(result.slotId, { driver: result.codexDriver, threadId: result.codexDriver.threadId, busy: false, lastNudge: 0 });
+            attachCodexSlot(sessionId, result.slotId, result.codexDriver, result.codexDriver.threadId);
             monitorCodexDriver(result.codexDriver, result.slotId, sessionId, brokerClient, handleEvent);
 
             // Monitor driver process exit for auto-restart
@@ -1040,12 +1068,7 @@ async function callOrchestratorTool(name: string, args: Record<string, unknown> 
 
         // Track CodexDriver for message forwarding (same pattern as create_team)
         if (result.codexDriver) {
-          let sessionDrivers = activeCodexDrivers.get(session_id);
-          if (!sessionDrivers) {
-            sessionDrivers = new Map();
-            activeCodexDrivers.set(session_id, sessionDrivers);
-          }
-          sessionDrivers.set(result.slotId, { driver: result.codexDriver, threadId: result.codexDriver.threadId, busy: false, lastNudge: 0 });
+          attachCodexSlot(session_id, result.slotId, result.codexDriver, result.codexDriver.threadId);
           monitorCodexDriver(result.codexDriver, result.slotId, session_id, brokerClient, handleEvent);
           result.codexDriver.onExit(() => {
             handleEvent({ type: "agent_crashed", severity: "critical", slotId: result.slotId, sessionId: session_id,
@@ -1600,9 +1623,7 @@ async function callOrchestratorTool(name: string, args: Record<string, unknown> 
 
             // Selected Codex workers must retain driver forwarding and crash recovery after resume.
             if (result.codexDriver) {
-              let drivers = activeCodexDrivers.get(session_id);
-              if (!drivers) { drivers = new Map(); activeCodexDrivers.set(session_id, drivers); }
-              drivers.set(result.slotId, { driver: result.codexDriver, threadId: result.codexDriver.threadId, busy: false, lastNudge: 0 });
+              attachCodexSlot(session_id, result.slotId, result.codexDriver, result.codexDriver.threadId);
               monitorCodexDriver(result.codexDriver, result.slotId, session_id, brokerClient, handleEvent);
               result.codexDriver.onExit(() => {
                 handleEvent({ type: "agent_crashed", severity: "critical", slotId: result.slotId, sessionId: session_id,
@@ -1723,7 +1744,10 @@ function startBackgroundLoops(brokerClient: BrokerClient): void {
   }, 60_000);
 
   // --- Codex message forwarding prompt ---
-  function buildForwardingPrompt(formatted: string): string {
+  function buildForwardingPrompt(formatted: string, fromOperator: boolean): string {
+    if (fromOperator) {
+      return `[Human operator] ${formatted}\nReply to the person in this turn. Do not only acknowledge.`;
+    }
     return `[Teammate message] ${formatted}\nAcknowledge briefly, then continue your current task.`;
   }
 
@@ -1776,10 +1800,11 @@ function startBackgroundLoops(brokerClient: BrokerClient): void {
           const pollResult = await brokerClient.pollBySlot(slotId);
           if (!pollResult.messages || pollResult.messages.length === 0) continue;
 
+          const fromOperator = pollResult.messages.some((m: any) => m.from_id === "operator");
           const formatted = pollResult.messages.map((m: any) => {
-            const from = m.from_slot_id !== null
-              ? `slot ${m.from_slot_id}`
-              : m.from_id;
+            const from = m.from_id === "operator"
+              ? "human operator"
+              : (m.from_slot_id !== null ? `slot ${m.from_slot_id}` : m.from_id);
             return `[${m.msg_type}] From ${from}: ${m.text}`;
           }).join("\n\n---\n\n");
 
@@ -1787,8 +1812,9 @@ function startBackgroundLoops(brokerClient: BrokerClient): void {
 
           // Path 1: Mid-turn injection via turn/steer (instant, non-blocking)
           if (state.driver.activeTurnId) {
+            if (fromOperator) state.replyOperator = true;
             try {
-              await state.driver.steer(threadId, buildForwardingPrompt(formatted));
+              await state.driver.steer(threadId, buildForwardingPrompt(formatted, fromOperator));
               log(LOG_PREFIX, `Steered messages into active turn for slot ${slotId}`);
             } catch (err) {
               // Steer can fail if the turn completed between our check and the call.
@@ -1800,10 +1826,15 @@ function startBackgroundLoops(brokerClient: BrokerClient): void {
 
           // Path 2: Start a new turn (fire-and-forget, non-blocking)
           state.busy = true;
-          state.driver.reply(threadId, buildForwardingPrompt(formatted))
+          state.driver.reply(threadId, buildForwardingPrompt(formatted, fromOperator))
             .then(async (result) => {
               state.threadId = result.threadId;
               state.busy = false;
+              if (fromOperator) {
+                state.replyOperator = false;
+                state.lastAgentText = "";
+                postOperatorReply(sessionId, slotId, result.content);
+              }
               await brokerClient.updateSlot({
                 id: slotId,
                 context_snapshot: JSON.stringify({
@@ -2141,9 +2172,7 @@ function startBackgroundLoops(brokerClient: BrokerClient): void {
               sessionProcs.set(slot.id, result.process);
             }
             if (result.codexDriver) {
-              let drvs = activeCodexDrivers.get(sessionId);
-              if (!drvs) { drvs = new Map(); activeCodexDrivers.set(sessionId, drvs); }
-              drvs.set(slot.id, { driver: result.codexDriver, threadId: result.codexDriver.threadId, busy: false, lastNudge: 0 });
+              attachCodexSlot(sessionId, slot.id, result.codexDriver, result.codexDriver.threadId);
               monitorCodexDriver(result.codexDriver, slot.id, sessionId, brokerClient, handleEvent);
             } else if (sessionProcs && result.process) {
               monitorProcess(result.process, slot.id, sessionId, brokerClient, handleEvent);

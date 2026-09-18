@@ -18,7 +18,7 @@ import {
   BROKER_HOSTNAME,
   DASHBOARD_REFRESH,
 } from "../shared/constants.ts";
-import type { Session, Slot, Peer, Message, GuardrailState, FileLock, FileOwnership, SendMessageRequest } from "../shared/types.ts";
+import type { Session, Slot, Peer, Message, GuardrailState, FileLock, FileOwnership } from "../shared/types.ts";
 import type { PlanState } from "../shared/broker-client.ts";
 
 // --- Configuration ---
@@ -48,7 +48,8 @@ async function resolveSessionId(explicit?: string): Promise<string | null> {
     const active = sessions
       .filter((s: Session) => s.status === "active" || s.status === "paused")
       .sort((a: Session, b: Session) => (b.last_active_at ?? 0) - (a.last_active_at ?? 0));
-    if (active.length > 0) return active[0].id;
+    const latest = active[0];
+    if (latest) return latest.id;
   } catch { /* broker down */ }
 
   return null;
@@ -325,28 +326,66 @@ const server = Bun.serve({
         if (!sid) return Response.json({ error: "session_id required" }, { status: 400 });
         if (!body.text || !body.text.trim()) return Response.json({ error: "text required" }, { status: 400 });
 
-        const sendReq: SendMessageRequest = {
-          from_id: body.from_id || "operator",
-          session_id: sid,
-          text: body.text.trim(),
-          msg_type: "chat",
-        };
-        if (body.to_slot_id != null && body.to_slot_id > 0) {
-          sendReq.to_slot_id = body.to_slot_id;
-        } else if (body.to_id) {
-          sendReq.to_id = body.to_id;
-        } else {
-          sendReq.to_id = "orchestrator";
-        }
-
-        const result = await broker.sendMessage(sendReq);
-        if (result && result.ok) {
+        const text = body.text.trim();
+        const from_id = body.from_id || "operator";
+        const refresh = () => {
           fetchState(sid).then(newState => {
             currentState = newState;
             broadcastState(newState);
           }).catch(() => {});
+        };
+
+        if (body.to_slot_id != null && body.to_slot_id > 0) {
+          const slot = await broker.getSlot(body.to_slot_id).catch(() => null);
+          if (!slot || slot.task_state === "released") {
+            return Response.json({
+              ok: false,
+              delivered_to: 0,
+              error: "Worker không nhận tin (đã released). Resume session rồi gửi lại.",
+            }, { status: 409 });
+          }
+          const result = await broker.sendMessage({
+            from_id, session_id: sid, text, msg_type: "chat", to_slot_id: body.to_slot_id,
+          });
+          const delivered = result?.ok ? 1 : 0;
+          if (delivered > 0) refresh();
+          if (delivered === 0) {
+            return Response.json({
+              ok: false,
+              delivered_to: 0,
+              error: result?.error || "Gửi không thành công",
+            }, { status: 409 });
+          }
+          return Response.json({ ...result, delivered_to: delivered, id: result?.id });
         }
-        return Response.json(result);
+
+        if (body.to_id) {
+          const result = await broker.sendMessage({
+            from_id, session_id: sid, text, msg_type: "chat", to_id: body.to_id,
+          });
+          if (result?.ok) refresh();
+          return Response.json(result);
+        }
+
+        const slots = await broker.listSlots(sid);
+        const results = [];
+        for (const slot of slots) {
+          if (slot.task_state === "released") continue;
+          results.push(await broker.sendMessage({
+            from_id, session_id: sid, text, msg_type: "chat", to_slot_id: slot.id,
+          }));
+        }
+        const delivered = results.filter((r) => r?.ok).length;
+        const ids = results.filter((r) => r?.ok && r.id != null).map((r) => r.id);
+        if (delivered > 0) refresh();
+        if (delivered === 0) {
+          return Response.json({
+            ok: false,
+            delivered_to: 0,
+            error: "Không còn worker nhận tin (đã released). Resume session rồi gửi lại.",
+          }, { status: 409 });
+        }
+        return Response.json({ ok: true, delivered_to: delivered, ids, id: ids[0] });
       } catch (e) {
         return Response.json({ error: String(e) }, { status: 500 });
       }

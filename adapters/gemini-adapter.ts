@@ -59,6 +59,7 @@ WHEN YOU FINISH YOUR TASK:
 
 WHEN A TEAMMATE MESSAGES YOU:
   → Reply via send_message IMMEDIATELY — they are blocked waiting on you
+  → If the sender is operator (human): send_message(to_id="operator", message=your reply). Do not only acknowledge.
 
 DO NOT:
   ✗ Work for 1+ minute without calling check_messages

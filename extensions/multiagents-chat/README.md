@@ -65,6 +65,10 @@ Dùng nút **Mở phòng hội thoại** trong Chat hoặc command palette
 gửi/nhận, thời điểm, nội dung thật, worker/nhiệm vụ/token, sự kiện hệ thống riêng,
 trạng thái trống/lỗi và kết nối tại thời điểm ghi nhận.
 
+## Nói chuyện trực tiếp
+
+Nói với worker = dashboard composer (loopback, WS) **hoặc** `@multiagents /direct session | Name | …` (có xác nhận Chat). Panel **không gửi tin**. Nút **Trả lời @Name trong Chat** copy slash `/direct …` rồi dán vào Chat. `/watch` 4 giây; dashboard WS nhanh hơn. Không clone Buzz/AgentsRoom overlay.
+
 Panel không gọi model/MCP, không có network và không giữ `toolInvocationToken`
 bên ngoài yêu cầu Chat. Chỉ chuyển giữa tối đa 12 phiên đã quan sát trong RAM;
 không phải mọi phiên trên broker. Dùng `@multiagents /status` hoặc `/watch` để

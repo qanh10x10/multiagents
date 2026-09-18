@@ -38,6 +38,22 @@ test("parseEngineUsage parses Claude, Codex, Gemini CLI, and Grok/OpenAI usage c
   };
   expect(parseEngineUsage(grokUsage)).toEqual({ input: 400, output: 120, cacheRead: 100 });
 
+  // Hollow-Router / OpenAI Responses usage (input_tokens + input_tokens_details)
+  const hollowUsage = {
+    usage: {
+      input_tokens: 410,
+      output_tokens: 88,
+      total_tokens: 498,
+      input_tokens_details: { cached_tokens: 40 },
+    },
+  };
+  expect(parseEngineUsage(hollowUsage)).toEqual({ input: 410, output: 88, cacheRead: 40 });
+
+  // Grok cache reported above prompt is clamped, not dropped
+  expect(parseEngineUsage({
+    usage: { prompt_tokens: 50, completion_tokens: 10, prompt_tokens_details: { cached_tokens: 80 } },
+  })).toEqual({ input: 50, output: 10, cacheRead: 50 });
+
   // Fallback / null
   expect(parseEngineUsage({})).toBeNull();
   expect(parseEngineUsage(null)).toBeNull();
@@ -93,4 +109,32 @@ test("driver listener serializes usage and does not count completion twice", asy
   expect(updates).toHaveLength(2);
   expect(updates[0].agent_usage.totals.input).toBe(100);
   expect(updates[1].agent_usage.totals.input).toBe(110);
+});
+test("turn/completed usage is recorded when thread totals never arrive", async () => {
+  let notify: any;
+  const updates: any[] = [];
+  const broker: any = { updateSlot: async (update: any) => { updates.push(update); }, getSlot: async () => ({ task_state: "working" }) };
+  monitorCodexDriver({ onNotification: (callback: any) => { notify = callback; } } as any, 1, "session", broker, () => {});
+  notify({ method: "turn/completed", threadId: "thread-hollow", turnId: "turn-1", params: {
+    threadId: "thread-hollow", turnId: "turn-1",
+    usage: { input_tokens: 410, output_tokens: 88, input_tokens_details: { cached_tokens: 40 } },
+  } });
+  for (let i = 0; i < 10; i++) await Promise.resolve();
+  expect(updates).toHaveLength(1);
+  expect(updates[0].agent_usage.kind).toBe("tokens");
+  expect(updates[0].agent_usage.totals).toEqual({ input: 410, cached: 40, output: 88 });
+});
+test("item/completed Grok usage is recorded while the turn is still running", async () => {
+  let notify: any;
+  const updates: any[] = [];
+  const broker: any = { updateSlot: async (update: any) => { updates.push(update); }, getSlot: async () => ({ task_state: "working" }) };
+  monitorCodexDriver({ onNotification: (callback: any) => { notify = callback; } } as any, 4, "session", broker, () => {});
+  notify({ method: "item/completed", threadId: "thread-grok", turnId: "turn-live", params: {
+    threadId: "thread-grok", turnId: "turn-live",
+    item: { id: "item-1", type: "agentMessage", usage: { prompt_tokens: 400, completion_tokens: 120, prompt_tokens_details: { cached_tokens: 100 } } },
+  } });
+  for (let i = 0; i < 10; i++) await Promise.resolve();
+  expect(updates).toHaveLength(1);
+  expect(updates[0].agent_usage.kind).toBe("tokens");
+  expect(updates[0].agent_usage.totals).toEqual({ input: 400, cached: 100, output: 120 });
 });

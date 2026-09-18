@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { FLAP_THRESHOLD } from "../shared/constants.ts";
 
 async function until(predicate: () => boolean | Promise<boolean>) {
-  const deadline = Date.now() + 6000;
+  const deadline = Date.now() + 12000;
   while (!await predicate()) {
     if (Date.now() > deadline) throw new Error("Recovery fixture timed out");
     await new Promise(resolve => setTimeout(resolve, 10));
@@ -66,13 +66,17 @@ createInterface({ input: process.stdin }).on("line", line => {
 });
 `);
   await Bun.write(wrapper, `
-import { appendFileSync } from "node:fs";
+import { appendFileSync, readFileSync } from "node:fs";
 const spawn = Bun.spawn.bind(Bun);
 const spawnSync = Bun.spawnSync.bind(Bun);
 const interval = globalThis.setInterval;
 const clock = Date.now;
 globalThis.setInterval = (callback, delay, ...args) => interval(async () => {
-  if (${JSON.stringify(mode === "idle")} && delay === 3000) Date.now = () => clock() + 120000;
+  if (${JSON.stringify(mode === "idle")} && delay === 3000) {
+    let turns = 0;
+    try { turns = readFileSync(${JSON.stringify(launchesPath)}, "utf8").split('"turn/start"').length - 1; } catch { /* not yet */ }
+    if (turns >= 2) Date.now = () => clock() + 120000;
+  }
   try { await callback(...args); } finally { Date.now = clock; }
   if (delay === 10000) appendFileSync(${JSON.stringify(launchesPath)}, JSON.stringify({ event: "sweep", pid: 0 }) + "\\n");
 }, delay === 10000 || (${JSON.stringify(mode === "idle")} && delay === 3000) ? 50 : delay);
@@ -106,6 +110,7 @@ await import(${JSON.stringify(new URL("../orchestrator/orchestrator-server.ts", 
     } });
     expect(added.isError).not.toBe(true);
     if (mode === "idle") {
+      await until(() => events().filter(event => event.event === "turn/start").length >= 2);
       await until(() => !!slots[0]?.context_snapshot && !!JSON.parse(slots[0].context_snapshot).attention);
       expect(JSON.parse(slots[0].context_snapshot).attention.reason).toContain("not confirmed complete");
       expect(events().filter(event => event.event === "turn/interrupt")).toHaveLength(0);

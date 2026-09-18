@@ -70,7 +70,7 @@ export function safeJsonParse<T>(str: string | null, fallback: T): T {
 /** Resolve home directory in a path */
 export function expandHome(path: string): string {
   if (path.startsWith("~/")) {
-    return `${process.env.HOME ?? homedir()}${path.slice(1)}`;
+    return `${process.env.HOME || process.env.USERPROFILE || homedir()}${path.slice(1)}`;
   }
   return path;
 }

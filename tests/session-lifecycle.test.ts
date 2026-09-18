@@ -277,6 +277,37 @@ describe("peek-undelivered", () => {
   });
 });
 
+describe("operator replies", () => {
+  test("send-message accepts to_id operator and from_id __slot_N__", async () => {
+    const { session, engineer } = await createTestSession();
+    const inbound = await post("/send-message", {
+      from_id: "operator",
+      to_slot_id: engineer.slot.id,
+      text: "hello worker",
+      msg_type: "chat",
+      session_id: session.id,
+    });
+    expect(inbound.ok).toBe(true);
+    expect(inbound.id).toBeGreaterThan(0);
+
+    const reply = await post("/send-message", {
+      from_id: `__slot_${engineer.slot.id}__`,
+      to_id: "operator",
+      text: "got it",
+      msg_type: "chat",
+      session_id: session.id,
+    });
+    expect(reply.ok).toBe(true);
+    expect(reply.error).toBeUndefined();
+
+    const log = await post("/message-log", { session_id: session.id, limit: 20 });
+    const rows = Array.isArray(log) ? log : log.messages ?? [];
+    const operatorReply = rows.find((m: { to_id?: string; text?: string }) => m.to_id === "operator" && m.text === "got it");
+    expect(operatorReply).toBeTruthy();
+    expect(operatorReply.from_slot_id).toBe(engineer.slot.id);
+  });
+});
+
 describe("Signal done notifications", () => {
   test("signal_done sends review_request to reviewer slots", async () => {
     const { session, engineer, reviewer } = await createTestSession();

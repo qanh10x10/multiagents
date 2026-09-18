@@ -5,6 +5,7 @@
 
 import { test, expect, describe, beforeEach, afterEach } from "bun:test";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import {
   buildCliArgs,
@@ -332,7 +333,7 @@ describe("ensureMcpConfigs — Claude .mcp.json", () => {
 describe("ensureMcpConfigs — Codex ~/.codex/config.toml (global)", () => {
   // These tests read the GLOBAL ~/.codex/config.toml because Codex CLI
   // only loads MCP servers from the global config. Project-level is ignored.
-  const globalCodexPath = path.join(process.env.HOME ?? "", ".codex", "config.toml");
+  const globalCodexPath = path.join(os.homedir(), ".codex", "config.toml");
   let originalContent: string | null = null;
 
   // Save and restore global config around each test
@@ -428,7 +429,7 @@ describe("ensureMcpConfigs — session file", () => {
 // ---------------------------------------------------------------------------
 describe("ensureMcpConfigs — full run", () => {
   // Save/restore global codex config
-  const globalCodexPath = path.join(process.env.HOME ?? "", ".codex", "config.toml");
+  const globalCodexPath = path.join(os.homedir(), ".codex", "config.toml");
   let origCodex: string | null = null;
   beforeEach(() => { try { origCodex = fs.readFileSync(globalCodexPath, "utf-8"); } catch { origCodex = null; } });
   afterEach(() => { if (origCodex !== null) fs.writeFileSync(globalCodexPath, origCodex); });

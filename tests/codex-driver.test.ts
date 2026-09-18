@@ -435,38 +435,23 @@ describe("Multi-slot independence", () => {
 // === FORWARDING PROMPT FORMAT ===
 
 describe("Forwarding prompt construction", () => {
-  function buildForwardingPrompt(formatted: string): string {
-    return [
-      "NEW MESSAGES FROM TEAMMATES:",
-      "",
-      formatted,
-      "",
-      "═══ REQUIRED ACTIONS (complete ALL before resuming your work) ═══",
-      "",
-      "1. Read and process each message above",
-      "2. Use send_message to reply to each teammate who messaged you",
-      "3. Use set_summary to update your current status",
-      "4. Call check_messages ONE MORE TIME to catch messages that arrived during processing",
-      "5. Read your inbox file (.multiagents/inbox/<your-name>.md) for any file-based messages",
-      "",
-      "AVAILABLE TOOLS: send_message, submit_feedback, approve, signal_done, set_summary, check_messages",
-      "",
-      "DO NOT resume your previous work until you have completed steps 1-5 above.",
-    ].join("\n");
+  function buildForwardingPrompt(formatted: string, fromOperator = false): string {
+    if (fromOperator) {
+      return `[Human operator] ${formatted}\nReply to the person in this turn. Do not only acknowledge.`;
+    }
+    return `[Teammate message] ${formatted}\nAcknowledge briefly, then continue your current task.`;
   }
 
-  test("prompt contains all 5 required action steps", () => {
+  test("teammate prompt asks for brief acknowledge", () => {
     const prompt = buildForwardingPrompt("[chat] From slot 1: hello");
-    expect(prompt).toContain("1. Read and process each message");
-    expect(prompt).toContain("2. Use send_message");
-    expect(prompt).toContain("3. Use set_summary");
-    expect(prompt).toContain("4. Call check_messages ONE MORE TIME");
-    expect(prompt).toContain("5. Read your inbox file");
+    expect(prompt).toContain("[Teammate message]");
+    expect(prompt).toContain("Acknowledge briefly");
   });
 
-  test("prompt includes the gate instruction", () => {
-    const prompt = buildForwardingPrompt("test");
-    expect(prompt).toContain("DO NOT resume your previous work");
+  test("operator prompt asks for a real reply", () => {
+    const prompt = buildForwardingPrompt("[chat] From human operator: hi", true);
+    expect(prompt).toContain("[Human operator]");
+    expect(prompt).toContain("Reply to the person");
   });
 
   test("prompt includes the formatted messages verbatim", () => {

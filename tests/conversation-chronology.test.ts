@@ -130,3 +130,45 @@ test("reading offset is preserved on forced updates and new history stays pendin
   expect(h.ids()).toEqual([...h.expected, 45]);
   expect(h.feed.scrollTop).toBe(230);
 });
+
+test("patchTimeline does not keep presence ghosts in the chat feed", () => {
+  const h = harness();
+  h.renderMessages(true);
+  const ghost = h.context.document.createElement("article");
+  ghost.dataset.ghost = "1";
+  ghost.textContent = "Engineer đang làm…";
+  h.feed.append(ghost);
+  const chats = h.context.state.messages.filter((m: { msg_type: string }) => m.msg_type === "chat");
+  h.patchTimeline(h.feed, chats, new Map());
+  expect(h.feed.children.some((row: { dataset: Record<string, string> }) => row.dataset.ghost === "1")).toBe(false);
+  expect(h.ids().filter((id: number) => Number.isFinite(id))).toEqual(h.expected);
+});
+
+test("operator all-workers fan-out collapses to one group row", () => {
+  const collapse = runInNewContext(`${code}; collapseBroadcasts`, { Date, Math });
+  const t = "2026-09-09T01:00:04.000Z";
+  const rows = [
+    { id: 10, from_id: "operator", to_slot_id: 4, text: "hi", msg_type: "chat", sent_at: t },
+    { id: 11, from_id: "operator", to_slot_id: 5, text: "hi", msg_type: "chat", sent_at: t },
+    { id: 12, from_id: "operator", to_slot_id: 6, text: "hi", msg_type: "chat", sent_at: t },
+    { id: 13, from_id: "PO", to_slot_id: 5, text: "hi", msg_type: "chat", sent_at: t },
+  ];
+  const collapsed = collapse(rows);
+  expect(collapsed).toHaveLength(2);
+  expect(collapsed[0]).toMatchObject({ id: 10, to_id: "all-workers", _broadcast: 3 });
+  expect(collapsed[1].id).toBe(13);
+});
+
+test("operator all-workers fan-out collapses across nearby timestamps", () => {
+  const collapse = runInNewContext(`${code}; collapseBroadcasts`, { Date, Math });
+  const rows = [
+    { id: 10, from_id: "operator", to_id: "all-workers", to_slot_id: null, text: "hi", msg_type: "chat", sent_at: "2026-09-09T01:00:04.000Z" },
+    { id: 11, from_id: "operator", to_slot_id: 4, text: "hi", msg_type: "chat", sent_at: "2026-09-09T01:00:04.120Z" },
+    { id: 12, from_id: "operator", to_slot_id: 5, text: "hi", msg_type: "chat", sent_at: "2026-09-09T01:00:05.000Z" },
+    { id: 13, from_id: "operator", to_slot_id: 6, text: "hi", msg_type: "chat", sent_at: "2026-09-09T01:00:05.800Z" },
+    { id: 14, from_id: "operator", to_slot_id: 4, text: "hi", msg_type: "chat", sent_at: "2026-09-09T01:00:04.000Z" },
+  ];
+  const collapsed = collapse(rows);
+  expect(collapsed).toHaveLength(1);
+  expect(collapsed[0]).toMatchObject({ id: 10, to_id: "all-workers", _broadcast: 3 });
+});

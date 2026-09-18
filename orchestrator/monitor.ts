@@ -60,16 +60,18 @@ export function parseEngineUsage(parsed: any): { input: number; output: number; 
   // e.g. { usage: { prompt_tokens, completion_tokens, total_tokens, prompt_tokens_details: { cached_tokens } } }
   // or { response: { usage: ... } }
   const genericUsage = parsed.usage ?? parsed.response?.usage;
-  if (genericUsage && (genericUsage.prompt_tokens !== undefined || genericUsage.input_tokens !== undefined)) {
-    const cached = genericUsage.prompt_tokens_details?.cached_tokens
+  if (genericUsage && (genericUsage.prompt_tokens !== undefined || genericUsage.input_tokens !== undefined
+    || genericUsage.completion_tokens !== undefined || genericUsage.output_tokens !== undefined)) {
+    const input = Number(genericUsage.prompt_tokens ?? genericUsage.input_tokens ?? 0);
+    const output = Number(genericUsage.completion_tokens ?? genericUsage.output_tokens ?? 0);
+    const cached = Number(genericUsage.prompt_tokens_details?.cached_tokens
+      ?? genericUsage.input_tokens_details?.cached_tokens
       ?? genericUsage.cached_tokens
       ?? genericUsage.cache_read_input_tokens
-      ?? 0;
-    return {
-      input: Number(genericUsage.prompt_tokens ?? genericUsage.input_tokens ?? 0),
-      output: Number(genericUsage.completion_tokens ?? genericUsage.output_tokens ?? 0),
-      cacheRead: Number(cached),
-    };
+      ?? 0);
+    if (!Number.isFinite(input) || !Number.isFinite(output) || input < 0 || output < 0) return null;
+    // ponytail: Grok/xAI sometimes reports cache outside prompt; clamp so validateUsageUpdate does not drop the row.
+    return { input, output, cacheRead: Math.min(Number.isFinite(cached) && cached > 0 ? cached : 0, input) };
   }
 
   return null;
@@ -531,14 +533,25 @@ export function monitorCodexDriver(
   onEvent: (event: AgentEvent) => void,
 ): void {
   let usageQueue = Promise.resolve();
+  let sawThreadUsage = false;
   driver.onNotification((notification: CodexNotification) => {
     if (notification.method === "thread/tokenUsage/updated" || notification.method === "account/rateLimits/updated") {
+      if (notification.method === "thread/tokenUsage/updated") sawThreadUsage = true;
       // Serialize telemetry only, keeping item/activity processing off this queue.
       usageQueue = usageQueue.then(async () => {
         const update = codexUsageUpdate(notification);
         if (update) await brokerClient.updateSlot({ id: slotId, agent_usage: update });
       }).catch(() => { log(LOG_PREFIX, `Usage update unavailable for slot ${slotId}`); });
       return;
+    }
+    // Hollow/OpenAI/Grok often omit thread/tokenUsage/updated. Gemini usually
+    // attaches usage on turn/completed; Grok may only attach it on item/completed
+    // while the turn is still running. Skip after canonical thread totals arrive.
+    if (!sawThreadUsage && (notification.method === "turn/completed" || notification.method === "item/completed")) {
+      usageQueue = usageQueue.then(async () => {
+        const update = codexUsageUpdate(notification);
+        if (update) await brokerClient.updateSlot({ id: slotId, agent_usage: update });
+      }).catch(() => { log(LOG_PREFIX, `Usage update unavailable for slot ${slotId}`); });
     }
     void handleCodexNotification(notification, slotId, sessionId, brokerClient, onEvent);
   });
@@ -578,23 +591,45 @@ export function driverUsageUpdate(notification: DriverNotification): { input: nu
   return usage.input || usage.output || usage.cacheRead ? usage : null;
 }
 
+function usageStreamId(...ids: unknown[]): string | null {
+  const id = ids.find((value): value is string => typeof value === "string" && value.length > 0 && value.length <= 300);
+  return id ? createHash("sha256").update(id).digest("hex") : null;
+}
+
+function usageTotals(raw: unknown): { input: number; cached: number; output: number } | null {
+  const parsed = parseEngineUsage({ usage: raw }) ?? parseEngineUsage(raw);
+  if (parsed) return { input: parsed.input, cached: Math.min(parsed.cacheRead, parsed.input), output: parsed.output };
+  if (!raw || typeof raw !== "object") return null;
+  const t = (raw as { total?: Record<string, unknown> }).total ?? (raw as Record<string, unknown>);
+  const input = t.inputTokens ?? t.input_tokens ?? t.prompt_tokens;
+  const output = t.outputTokens ?? t.output_tokens ?? t.completion_tokens;
+  const cached = t.cachedInputTokens ?? t.cached_input_tokens
+    ?? (t.prompt_tokens_details as { cached_tokens?: unknown } | undefined)?.cached_tokens ?? 0;
+  if (typeof input !== "number" || typeof output !== "number" || !Number.isFinite(input) || !Number.isFinite(output)) return null;
+  if (input < 0 || output < 0) return null;
+  const cacheRead = typeof cached === "number" && Number.isFinite(cached) && cached > 0 ? cached : 0;
+  return { input, cached: Math.min(cacheRead, input), output };
+}
+
 /** Codex 0.153.4 app-server schema: total is cumulative; cached input is a subset of input. */
 export function codexUsageUpdate(notification: CodexNotification): AgentUsageUpdate | null {
   const { method, params } = notification;
-  const hash = (value: string) => createHash("sha256").update(value).digest("hex");
   try {
     if (method === "thread/tokenUsage/updated") {
       const thread = params.threadId;
       const usage = params.tokenUsage as { total?: Record<string, unknown> } | undefined;
-      if (typeof thread !== "string" || !thread || thread.length > 300 || !usage?.total) return null;
-      return validateUsageUpdate({ kind: "tokens", stream: hash(thread), totals: {
+      const stream = usageStreamId(thread);
+      if (!stream || !usage?.total) return null;
+      return validateUsageUpdate({ kind: "tokens", stream, totals: {
         input: usage.total.inputTokens, cached: usage.total.cachedInputTokens, output: usage.total.outputTokens,
       } });
     }
     if (method === "account/rateLimits/updated") {
       const limits = params.rateLimits as Record<string, any> | undefined;
       if (!limits) return null;
-      const update: Record<string, unknown> = { kind: "quota", bucket: hash(String(limits.limitId ?? "default")) };
+      const bucket = usageStreamId(String(limits.limitId ?? "default"));
+      if (!bucket) return null;
+      const update: Record<string, unknown> = { kind: "quota", bucket };
       for (const key of ["primary", "secondary"]) {
         const window = limits[key];
         if (window?.windowDurationMins != null) update[key] = {
@@ -603,6 +638,19 @@ export function codexUsageUpdate(notification: CodexNotification): AgentUsageUpd
         };
       }
       return validateUsageUpdate(update);
+    }
+    if (method === "turn/completed" || method === "item/completed") {
+      const item = params.item as { id?: unknown; usage?: unknown } | undefined;
+      const raw = params.usage ?? (params.turn as { usage?: unknown } | undefined)?.usage ?? item?.usage;
+      const totals = usageTotals(raw);
+      const stream = usageStreamId(
+        typeof params.turnId === "string" ? params.turnId : notification.turnId,
+        typeof (params.turn as { id?: string } | undefined)?.id === "string" ? (params.turn as { id: string }).id : undefined,
+        typeof params.threadId === "string" ? params.threadId : notification.threadId,
+        item?.id,
+      );
+      if (!totals || !stream) return null;
+      return validateUsageUpdate({ kind: "tokens", stream, totals });
     }
   } catch { /* Unsupported or malformed telemetry stays unknown. */ }
   return null;

@@ -6,7 +6,8 @@ function validMessage(message) {
   if (!message || typeof message !== "object" || Array.isArray(message)) return false;
   const keys = Object.keys(message);
   return (keys.length === 1 && ["ready", "chat"].includes(message.type)) ||
-    (keys.length === 2 && message.type === "select" && typeof message.key === "string" && message.key.length <= 400);
+    (keys.length === 2 && message.type === "select" && typeof message.key === "string" && message.key.length <= 400) ||
+    (keys.length === 2 && message.type === "reply" && typeof message.name === "string" && message.name.length > 0 && message.name.length <= 200);
 }
 
 function createConversationPanel(vscode, context) {
@@ -31,7 +32,7 @@ function createConversationPanel(vscode, context) {
       <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${panel.webview.cspSource}; script-src 'nonce-${nonce}'; img-src 'none'; connect-src 'none'; base-uri 'none'; form-action 'none'">
       <link rel="stylesheet" href="${resource("panel.css")}"><title>Hội thoại Multiagents</title></head><body>
       <header><h1>Phòng hội thoại</h1><p>Báo cáo thật từ worker AI và người điều hành. Tổng hợp của điều phối AI nằm riêng trong Chat.</p>
-      <label for="session">Phiên đã quan sát</label><select id="session"></select><button id="chat" type="button">Hướng dẫn mở Chat</button>
+      <label for="session">Phiên đã quan sát</label><select id="session"></select><button id="chat" type="button">Hướng dẫn mở Chat</button><button id="reply" type="button">Trả lời @Name trong Chat</button>
       <p id="status" role="status"></p><p>Chỉ đọc bản quan sát từ @multiagents /status hoặc /watch. Để chọn phiên mới và xác nhận điều khiển, dùng @multiagents trong Chat.</p></header>
       <main><section class="conversation-container" aria-labelledby="conversation-title">
       <div class="conversation-body-wrapper">
@@ -62,6 +63,12 @@ function createConversationPanel(vscode, context) {
       if (!validMessage(message)) return;
       if (message.type === "chat") {
         vscode.window.showInformationMessage("Mở Chat, nhập @multiagents để trao đổi với điều phối AI hoặc /status, /watch để đọc dữ liệu. Mọi điều khiển đều cần xác nhận tại Chat.");
+      } else if (message.type === "reply") {
+        const session = selected || "";
+        const name = String(message.name || "").slice(0, 200);
+        const slash = `/direct ${session} | ${name} | `;
+        vscode.env?.clipboard?.writeText?.(slash);
+        vscode.window.showInformationMessage("Đã copy " + slash + "Dán vào @multiagents Chat. Panel không gửi tin.");
       } else if (message.type === "select") {
         if (!vscode.workspace.isTrusted || !snapshots.has(message.key)) return;
         selected = message.key; error = ""; send();

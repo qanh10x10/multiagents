@@ -100,6 +100,15 @@ completion gates, ECC opt-in hay environment isolation. Worker đang chạy khô
   và [Webview API](https://code.visualstudio.com/api/extension-guides/webview):
   API contract cần dùng khi review host integration.
 
+## Nói chuyện trực tiếp (2026-09-17)
+
+Người nói với worker như đồng nghiệp. Không clone Buzz/OpenHands/AgentsRoom.
+
+- Dashboard composer: 1 người hoặc cả nhóm. Inbox Cần bạn / Chờ duyệt / Đang làm / Rảnh. `@tên`, Nhắn mọi worker, badge Người, Nhắn lại, presence “đang làm…”. Optimistic chỉ sau HTTP 200 + `id` thật.
+- `@multiagents /direct session | Name | …` vẫn xác nhận trong Chat.
+- Panel chỉ đọc: nút copy `/direct …` vào clipboard. Không MCP, không gửi tin.
+- `/watch` 4 giây. Dashboard WS nhanh hơn. Không đổi interval watch.
+
 ## Lệnh và kết quả
 
 Chạy tại `C:\Users\PC\Desktop\OutSources\Git\multiagents`, Bun 1.4.2.
